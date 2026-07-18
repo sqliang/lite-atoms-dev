@@ -311,12 +311,18 @@ export default function ChatPanel() {
           <textarea
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              // Auto-resize textarea
+              const el = e.target;
+              el.style.height = 'auto';
+              el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+            }}
             onKeyDown={handleKeyDown}
             placeholder="描述你的需求..."
-            rows={1}
-            className="flex-1 resize-none bg-transparent px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none max-h-32"
-            style={{ minHeight: '44px' }}
+            rows={2}
+            className="flex-1 resize-none bg-transparent px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none overflow-y-auto"
+            style={{ minHeight: '56px', maxHeight: '200px' }}
           />
           <Button
             onClick={handleSend}
@@ -327,9 +333,6 @@ export default function ChatPanel() {
             <Send className="w-3.5 h-3.5 text-primary-foreground" />
           </Button>
         </div>
-        <p className="text-[10px] text-muted-foreground/50 text-center mt-2">
-          AI 可能产生不准确的信息，请验证重要细节。
-        </p>
       </div>
     </div>
   );
