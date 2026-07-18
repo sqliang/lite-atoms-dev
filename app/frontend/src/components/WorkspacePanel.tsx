@@ -1,16 +1,19 @@
 import { useState } from 'react';
-import { X, Code, FileText, Image, Layers, Copy, Download } from 'lucide-react';
+import { X, Code, FileText, Image, Layers, Copy, Download, Eye, SquareCode } from 'lucide-react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Button } from '@/components/ui/button';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import CodeEditor from './editors/CodeEditor';
 import ImageViewer from './editors/ImageViewer';
 import DocumentViewer from './editors/DocumentViewer';
+import AppPreview from './AppPreview';
 import FileTree from './FileTree';
 import { toast } from 'sonner';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import type { FileNode } from '@/context/WorkspaceContext';
+
+type ViewMode = 'code' | 'preview';
 
 function collectAllFiles(nodes: FileNode[], prefix = ''): { path: string; content: string }[] {
   const files: { path: string; content: string }[] = [];
@@ -48,6 +51,7 @@ function fallbackCopyToClipboard(text: string): boolean {
 export default function WorkspacePanel() {
   const { tabs, activeTabId, closeTab, setActiveTab, projectFiles } = useWorkspace();
   const [isTreeCollapsed, setIsTreeCollapsed] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('code');
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
@@ -68,7 +72,6 @@ export default function WorkspacePanel() {
     if (!activeTab) return;
     const content = activeTab.content;
 
-    // Try modern clipboard API first
     if (navigator.clipboard && window.isSecureContext) {
       try {
         await navigator.clipboard.writeText(content);
@@ -79,7 +82,6 @@ export default function WorkspacePanel() {
       }
     }
 
-    // Fallback for non-HTTPS contexts
     const success = fallbackCopyToClipboard(content);
     if (success) {
       toast.success('Copied to clipboard');
@@ -141,22 +143,35 @@ export default function WorkspacePanel() {
 
       <PanelResizeHandle className="w-px bg-border hover:bg-primary/30 transition-colors" />
 
-      {/* Editor Area */}
+      {/* Editor / Preview Area */}
       <Panel defaultSize={78} minSize={50}>
-        {tabs.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center bg-card text-center px-8">
-            <div className="w-16 h-16 rounded-2xl bg-secondary/40 flex items-center justify-center mb-5">
-              <Layers className="w-7 h-7 text-muted-foreground/40" />
+        <div className="h-full flex flex-col bg-card">
+          {/* Top toolbar with view mode toggle */}
+          <div className="flex items-center h-9 border-b border-border bg-background flex-shrink-0">
+            {/* View mode toggle */}
+            <div className="flex items-center gap-0.5 px-2 border-r border-border/50">
+              <Button
+                variant={viewMode === 'code' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-6 px-2.5 text-[11px] gap-1.5 cursor-pointer"
+                onClick={() => setViewMode('code')}
+              >
+                <SquareCode className="w-3.5 h-3.5" />
+                Code
+              </Button>
+              <Button
+                variant={viewMode === 'preview' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-6 px-2.5 text-[11px] gap-1.5 cursor-pointer"
+                onClick={() => setViewMode('preview')}
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Preview
+              </Button>
             </div>
-            <h3 className="text-sm font-medium text-foreground/60 mb-2">Editor</h3>
-            <p className="text-xs text-muted-foreground/50 max-w-[240px] leading-relaxed">
-              Select a file from the explorer or click preview on a chat attachment to open it here.
-            </p>
-          </div>
-        ) : (
-          <div className="h-full flex flex-col bg-card">
-            {/* Tab bar with actions */}
-            <div className="flex items-center h-9 border-b border-border bg-background flex-shrink-0">
+
+            {/* Tabs (only in code mode) */}
+            {viewMode === 'code' && (
               <div className="flex-1 flex items-center overflow-x-auto">
                 {tabs.map((tab) => (
                   <div
@@ -184,8 +199,17 @@ export default function WorkspacePanel() {
                   </div>
                 ))}
               </div>
+            )}
 
-              {/* File actions */}
+            {/* Preview title */}
+            {viewMode === 'preview' && (
+              <div className="flex-1 flex items-center px-3">
+                <span className="text-[11px] text-muted-foreground">Application Preview</span>
+              </div>
+            )}
+
+            {/* File actions (only in code mode) */}
+            {viewMode === 'code' && (
               <div className="flex items-center gap-0.5 px-2 border-l border-border/50 flex-shrink-0">
                 <Button
                   variant="ghost"
@@ -206,22 +230,42 @@ export default function WorkspacePanel() {
                   <Download className="w-3.5 h-3.5" />
                 </Button>
               </div>
-            </div>
-
-            {/* Content area */}
-            <div className="flex-1 overflow-hidden">
-              {activeTab && activeTab.type === 'code' && (
-                <CodeEditor content={activeTab.content} language={activeTab.language} />
-              )}
-              {activeTab && activeTab.type === 'image' && (
-                <ImageViewer content={activeTab.content} title={activeTab.title} />
-              )}
-              {activeTab && activeTab.type === 'document' && (
-                <DocumentViewer content={activeTab.content} title={activeTab.title} />
-              )}
-            </div>
+            )}
           </div>
-        )}
+
+          {/* Content area */}
+          <div className="flex-1 overflow-hidden">
+            {viewMode === 'preview' ? (
+              <AppPreview />
+            ) : (
+              <>
+                {tabs.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center px-8">
+                    <div className="w-16 h-16 rounded-2xl bg-secondary/40 flex items-center justify-center mb-5">
+                      <Layers className="w-7 h-7 text-muted-foreground/40" />
+                    </div>
+                    <h3 className="text-sm font-medium text-foreground/60 mb-2">Editor</h3>
+                    <p className="text-xs text-muted-foreground/50 max-w-[240px] leading-relaxed">
+                      Select a file from the explorer or click preview on a chat attachment to open it here.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {activeTab && activeTab.type === 'code' && (
+                      <CodeEditor content={activeTab.content} language={activeTab.language} />
+                    )}
+                    {activeTab && activeTab.type === 'image' && (
+                      <ImageViewer content={activeTab.content} title={activeTab.title} />
+                    )}
+                    {activeTab && activeTab.type === 'document' && (
+                      <DocumentViewer content={activeTab.content} title={activeTab.title} />
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       </Panel>
     </PanelGroup>
   );
