@@ -1,16 +1,29 @@
 import { useEffect } from 'react';
-import { client } from '../lib/api';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
+import { Loader2 } from 'lucide-react';
 
 export default function AuthCallback() {
+  const navigate = useNavigate();
+
   useEffect(() => {
-    client.auth.login();
-  }, []);
+    const handleCallback = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        navigate('/', { replace: true });
+      } else {
+        navigate('/login', { replace: true });
+      }
+    };
+
+    handleCallback();
+  }, [navigate]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Processing authentication...</p>
+    <div className="h-screen w-screen flex items-center justify-center bg-background">
+      <div className="text-center space-y-3">
+        <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
+        <p className="text-sm text-muted-foreground">正在验证身份...</p>
       </div>
     </div>
   );

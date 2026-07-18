@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, ArrowRight, Layers, Clock, ChevronRight } from 'lucide-react';
+import { Sparkles, ArrowRight, Layers, Clock, ChevronRight, LogOut, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/context/AuthContext';
 
 /**
  * Generate a unique session ID for a new project conversation.
@@ -47,7 +48,14 @@ const DEMO_PROJECTS: Project[] = [
 export default function HomePage() {
   const [input, setInput] = useState('');
   const [projects] = useState<Project[]>(DEMO_PROJECTS);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login', { replace: true });
+  };
 
   const handleStartBuild = () => {
     if (!input.trim()) return;
@@ -79,6 +87,31 @@ export default function HomePage() {
               <Layers className="w-3.5 h-3.5 text-primary-foreground" />
             </div>
             <span className="text-sm font-semibold text-foreground">AI Workspace</span>
+          </div>
+          {/* User Avatar */}
+          <div className="relative">
+            <button
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              className="w-7 h-7 rounded-full bg-secondary border border-border/60 flex items-center justify-center hover:bg-secondary/80 transition-colors cursor-pointer"
+              title={user?.email || ''}
+            >
+              <User className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+            {showUserMenu && (
+              <div className="absolute right-0 top-9 w-48 bg-card border border-border/80 rounded-lg shadow-lg py-1 z-50">
+                <div className="px-3 py-2 border-b border-border/40">
+                  <p className="text-[11px] text-muted-foreground/60">登录账户</p>
+                  <p className="text-xs text-foreground truncate">{user?.email}</p>
+                </div>
+                <button
+                  onClick={handleSignOut}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  退出登录
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
