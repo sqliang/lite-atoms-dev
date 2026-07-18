@@ -307,7 +307,8 @@ export default function ChatPanel() {
 
       {/* Input */}
       <div className="p-3 border-t border-border/60 flex-shrink-0">
-        <div className="relative flex items-end gap-2 rounded-xl border border-border/80 bg-secondary/30 focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200">
+        <div className="rounded-xl border border-border/80 bg-secondary/30 focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200">
+          {/* Textarea area */}
           <textarea
             ref={inputRef}
             value={input}
@@ -321,17 +322,20 @@ export default function ChatPanel() {
             onKeyDown={handleKeyDown}
             placeholder="描述你的需求..."
             rows={2}
-            className="flex-1 resize-none bg-transparent px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none overflow-y-auto"
+            className="w-full resize-none bg-transparent px-4 pt-3 pb-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none overflow-y-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
             style={{ minHeight: '56px', maxHeight: '200px' }}
           />
-          <Button
-            onClick={handleSend}
-            disabled={!input.trim()}
-            size="icon"
-            className="m-1.5 w-8 h-8 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-30 cursor-pointer transition-all duration-200"
-          >
-            <Send className="w-3.5 h-3.5 text-primary-foreground" />
-          </Button>
+          {/* Toolbar row - send button and future controls */}
+          <div className="flex items-center justify-end px-3 pb-2">
+            <Button
+              onClick={handleSend}
+              disabled={!input.trim()}
+              size="icon"
+              className="w-8 h-8 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-30 cursor-pointer transition-all duration-200"
+            >
+              <Send className="w-3.5 h-3.5 text-primary-foreground" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
