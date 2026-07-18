@@ -1,17 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, ArrowRight, Layers, Clock, ChevronRight, LogOut, User } from 'lucide-react';
+import { Sparkles, ArrowRight, Layers, Clock, ChevronRight, LogOut, User, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
-
-/**
- * Generate a unique session ID for a new project conversation.
- * TODO: Replace with server-side session ID generation via API call.
- * e.g., const sessionId = await fetch('/api/sessions', { method: 'POST' }).then(r => r.json()).then(d => d.id);
- */
-function generateSessionId(): string {
-  return `session-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-}
+import { supabase } from '@/lib/supabase';
 
 interface Project {
   sessionId: string;
@@ -20,49 +12,79 @@ interface Project {
   updatedAt: string;
 }
 
-/**
- * Demo project list.
- * TODO: Fetch from server using user's session history API.
- */
-const DEMO_PROJECTS: Project[] = [
-  {
-    sessionId: 'session-1720000000000-abc123',
-    title: 'Dashboard App',
-    description: '一个现代化的数据仪表盘应用，包含图表和指标卡片',
-    updatedAt: '2 小时前',
-  },
-  {
-    sessionId: 'session-1719900000000-def456',
-    title: 'E-commerce Store',
-    description: '电商平台前端，支持商品展示和购物车功能',
-    updatedAt: '1 天前',
-  },
-  {
-    sessionId: 'session-1719800000000-ghi789',
-    title: 'Blog Platform',
-    description: '支持 Markdown 编辑的博客系统',
-    updatedAt: '3 天前',
-  },
-];
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return '刚刚';
+  if (diffMin < 60) return `${diffMin} 分钟前`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} 小时前`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 30) return `${diffDay} 天前`;
+  return `${Math.floor(diffDay / 30)} 个月前`;
+}
 
 export default function HomePage() {
   const [input, setInput] = useState('');
-  const [projects] = useState<Project[]>(DEMO_PROJECTS);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+
+  // Fetch user's projects from Supabase
+  useEffect(() => {
+    if (!user) return;
+    const fetchProjects = async () => {
+      const { data } = await supabase
+        .from('app_bd56170962_projects')
+        .select('id, name, description, updated_at')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false })
+        .limit(20);
+      if (data) {
+        setProjects(
+          data.map((p) => ({
+            sessionId: p.id,
+            title: p.name || '未命名项目',
+            description: p.description || '',
+            updatedAt: formatRelativeTime(p.updated_at),
+          }))
+        );
+      }
+    };
+    fetchProjects();
+  }, [user]);
 
   const handleSignOut = async () => {
     await signOut();
     navigate('/login', { replace: true });
   };
 
-  const handleStartBuild = () => {
-    if (!input.trim()) return;
-    // Generate a session ID for this new conversation
-    // TODO: In production, fetch session ID from server API
-    const sessionId = generateSessionId();
-    navigate(`/project/${sessionId}`, { state: { prompt: input.trim() } });
+  const handleStartBuild = async () => {
+    if (!input.trim() || !user || creating) return;
+    setCreating(true);
+
+    // Insert a new project row into Supabase
+    const { data, error } = await supabase
+      .from('app_bd56170962_projects')
+      .insert({
+        user_id: user.id,
+        name: '未命名项目',
+        description: input.trim(),
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      setCreating(false);
+      return;
+    }
+
+    // Navigate to workspace with the new session_id
+    navigate(`/project/${data.id}`, { state: { prompt: input.trim() } });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -183,12 +205,21 @@ export default function HomePage() {
                 </p>
                 <Button
                   onClick={handleStartBuild}
-                  disabled={!input.trim()}
+                  disabled={!input.trim() || creating}
                   size="sm"
                   className="h-8 px-4 gap-2 rounded-lg cursor-pointer transition-all duration-200 disabled:opacity-30"
                 >
-                  开始构建
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  {creating ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      创建中...
+                    </>
+                  ) : (
+                    <>
+                      开始构建
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
