@@ -7,8 +7,11 @@ import ImageViewer from './editors/ImageViewer';
 import DocumentViewer from './editors/DocumentViewer';
 import FileTree from './FileTree';
 import { toast } from 'sonner';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
+import type { FileNode } from '@/context/WorkspaceContext';
 
-function collectAllFiles(nodes: import('@/context/WorkspaceContext').FileNode[], prefix = ''): { path: string; content: string }[] {
+function collectAllFiles(nodes: FileNode[], prefix = ''): { path: string; content: string }[] {
   const files: { path: string; content: string }[] = [];
   for (const node of nodes) {
     const currentPath = prefix ? `${prefix}/${node.name}` : node.name;
@@ -19,6 +22,26 @@ function collectAllFiles(nodes: import('@/context/WorkspaceContext').FileNode[],
     }
   }
   return files;
+}
+
+function fallbackCopyToClipboard(text: string): boolean {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '-9999px';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  let success = false;
+  try {
+    success = document.execCommand('copy');
+  } catch {
+    success = false;
+  }
+  document.body.removeChild(textarea);
+  return success;
 }
 
 export default function WorkspacePanel() {
@@ -39,13 +62,28 @@ export default function WorkspacePanel() {
     }
   };
 
-  const handleCopyFile = () => {
+  const handleCopyFile = async () => {
     if (!activeTab) return;
-    navigator.clipboard.writeText(activeTab.content).then(() => {
+    const content = activeTab.content;
+    
+    // Try modern clipboard API first
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(content);
+        toast.success('Copied to clipboard');
+        return;
+      } catch {
+        // Fall through to fallback
+      }
+    }
+    
+    // Fallback for non-HTTPS contexts
+    const success = fallbackCopyToClipboard(content);
+    if (success) {
       toast.success('Copied to clipboard');
-    }).catch(() => {
+    } else {
       toast.error('Failed to copy');
-    });
+    }
   };
 
   const handleDownloadFile = () => {
@@ -62,33 +100,26 @@ export default function WorkspacePanel() {
     toast.success(`Downloaded ${activeTab.title}`);
   };
 
-  const handleDownloadProject = () => {
+  const handleDownloadProject = async () => {
     const allFiles = collectAllFiles(projectFiles);
     if (allFiles.length === 0) {
       toast.error('No project files to download');
       return;
     }
 
-    // Create a combined text file with all project files (simple archive format)
-    let projectContent = '';
+    const zip = new JSZip();
+    
     for (const file of allFiles) {
-      projectContent += `${'='.repeat(60)}\n`;
-      projectContent += `FILE: ${file.path}\n`;
-      projectContent += `${'='.repeat(60)}\n`;
-      projectContent += file.content;
-      projectContent += '\n\n';
+      zip.file(file.path, file.content);
     }
 
-    const blob = new Blob([projectContent], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'project-bundle.txt';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success('Project downloaded');
+    try {
+      const blob = await zip.generateAsync({ type: 'blob' });
+      saveAs(blob, 'project.zip');
+      toast.success('Project downloaded as ZIP');
+    } catch {
+      toast.error('Failed to generate ZIP file');
+    }
   };
 
   return (
