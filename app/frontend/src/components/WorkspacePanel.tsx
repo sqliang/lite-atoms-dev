@@ -208,8 +208,8 @@ export default function WorkspacePanel() {
               </div>
             )}
 
-            {/* File actions (only in code mode) */}
-            {viewMode === 'code' && (
+            {/* File actions (only in code mode when a file is open) */}
+            {viewMode === 'code' && activeTab && (
               <div className="flex items-center gap-0.5 px-2 border-l border-border/50 flex-shrink-0">
                 <Button
                   variant="ghost"
