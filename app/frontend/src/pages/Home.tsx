@@ -1,30 +1,43 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Sparkles, ArrowRight, Layers, Clock, ChevronRight } from 'lucide-react';
+import { Sparkles, ArrowRight, Layers, Clock, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
+/**
+ * Generate a unique session ID for a new project conversation.
+ * TODO: Replace with server-side session ID generation via API call.
+ * e.g., const sessionId = await fetch('/api/sessions', { method: 'POST' }).then(r => r.json()).then(d => d.id);
+ */
+function generateSessionId(): string {
+  return `session-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+}
+
 interface Project {
-  id: string;
+  sessionId: string;
   title: string;
   description: string;
   updatedAt: string;
 }
 
+/**
+ * Demo project list.
+ * TODO: Fetch from server using user's session history API.
+ */
 const DEMO_PROJECTS: Project[] = [
   {
-    id: 'proj-1',
+    sessionId: 'session-1720000000000-abc123',
     title: 'Dashboard App',
     description: '一个现代化的数据仪表盘应用，包含图表和指标卡片',
     updatedAt: '2 小时前',
   },
   {
-    id: 'proj-2',
+    sessionId: 'session-1719900000000-def456',
     title: 'E-commerce Store',
     description: '电商平台前端，支持商品展示和购物车功能',
     updatedAt: '1 天前',
   },
   {
-    id: 'proj-3',
+    sessionId: 'session-1719800000000-ghi789',
     title: 'Blog Platform',
     description: '支持 Markdown 编辑的博客系统',
     updatedAt: '3 天前',
@@ -38,9 +51,10 @@ export default function HomePage() {
 
   const handleStartBuild = () => {
     if (!input.trim()) return;
-    // Navigate to workspace with the project description
-    const projectId = `proj-${Date.now()}`;
-    navigate(`/project/${projectId}`, { state: { prompt: input.trim() } });
+    // Generate a session ID for this new conversation
+    // TODO: In production, fetch session ID from server API
+    const sessionId = generateSessionId();
+    navigate(`/project/${sessionId}`, { state: { prompt: input.trim() } });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -50,8 +64,8 @@ export default function HomePage() {
     }
   };
 
-  const handleProjectClick = (projectId: string) => {
-    navigate(`/project/${projectId}`);
+  const handleProjectClick = (sessionId: string) => {
+    navigate(`/project/${sessionId}`);
   };
 
   return (
@@ -68,21 +82,6 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* New Project Button */}
-        <div className="px-3 pt-3 pb-1 flex-shrink-0">
-          <Button
-            variant="outline"
-            className="w-full justify-start gap-2 text-xs h-8 cursor-pointer"
-            onClick={() => {
-              setInput('');
-              document.getElementById('project-input')?.focus();
-            }}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            新建项目
-          </Button>
-        </div>
-
         {/* Project List */}
         <div className="flex-1 overflow-y-auto px-2 py-2">
           <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wider font-medium px-2 mb-2">
@@ -91,8 +90,8 @@ export default function HomePage() {
           <div className="space-y-0.5">
             {projects.map((project) => (
               <button
-                key={project.id}
-                onClick={() => handleProjectClick(project.id)}
+                key={project.sessionId}
+                onClick={() => handleProjectClick(project.sessionId)}
                 className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-secondary/60 transition-colors duration-150 group cursor-pointer"
               >
                 <div className="flex items-center justify-between">
