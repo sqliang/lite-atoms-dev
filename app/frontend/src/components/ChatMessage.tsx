@@ -37,7 +37,7 @@ interface ChatMessageProps {
 }
 
 export default function ChatMessage({ message }: ChatMessageProps) {
-  const { openTab } = useWorkspace();
+  const { openTab, findAndOpenFileByName } = useWorkspace();
   const isUser = message.role === 'user';
   const [stepsExpanded, setStepsExpanded] = useState(false);
 
@@ -52,13 +52,16 @@ export default function ChatMessage({ message }: ChatMessageProps) {
   };
 
   const handleFileClick = (file: string) => {
-    // Try to find matching attachment by filename
+    // 1. First try to find the file in the project file tree (source of truth)
+    const foundInTree = findAndOpenFileByName(file);
+    if (foundInTree) return;
+
+    // 2. Then try to find matching attachment by filename
     const matchingAttachment = message.attachments?.find(
       (att) => att.title === file || att.title.endsWith(file)
     );
 
     if (matchingAttachment) {
-      // Open the actual attachment content
       openTab({
         id: matchingAttachment.id,
         title: matchingAttachment.title,
@@ -66,22 +69,23 @@ export default function ChatMessage({ message }: ChatMessageProps) {
         content: matchingAttachment.content,
         language: matchingAttachment.language,
       });
-    } else {
-      // Fallback: open with filename as tab, infer language from extension
-      const ext = file.split('.').pop() || '';
-      const langMap: Record<string, string> = {
-        ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
-        css: 'css', json: 'json', html: 'html', md: 'markdown', yaml: 'yaml',
-        py: 'python', go: 'go', rs: 'rust',
-      };
-      openTab({
-        id: `file-${file}-${message.id}`,
-        title: file,
-        type: 'code',
-        content: `// ${file}\n// This file was referenced in the workflow but its content is not available in this message.`,
-        language: langMap[ext] || 'typescript',
-      });
+      return;
     }
+
+    // 3. Fallback: open with filename as tab with placeholder
+    const ext = file.split('.').pop() || '';
+    const langMap: Record<string, string> = {
+      ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+      css: 'css', json: 'json', html: 'html', md: 'markdown', yaml: 'yaml',
+      py: 'python', go: 'go', rs: 'rust', png: 'text', jpg: 'text',
+    };
+    openTab({
+      id: `file-${file}-${message.id}`,
+      title: file,
+      type: file.match(/\.(png|jpg|jpeg|gif|svg|webp)$/) ? 'image' : 'code',
+      content: `// ${file}\n// This file was referenced in the workflow but its content is not available yet.`,
+      language: langMap[ext] || 'typescript',
+    });
   };
 
   const getAttachmentIcon = (type: TabType) => {

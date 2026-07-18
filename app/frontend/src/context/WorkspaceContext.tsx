@@ -30,6 +30,7 @@ interface WorkspaceContextType {
   closeAllTabs: () => void;
   setActiveTab: (id: string) => void;
   openFileFromTree: (file: FileNode) => void;
+  findAndOpenFileByName: (fileName: string) => boolean;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -591,8 +592,40 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     });
   }, [openTab]);
 
+  /**
+   * Search the project file tree recursively by filename and open the file if found.
+   * Returns true if file was found and opened, false otherwise.
+   */
+  const findAndOpenFileByName = useCallback((fileName: string): boolean => {
+    const searchTree = (nodes: FileNode[]): FileNode | null => {
+      for (const node of nodes) {
+        if (node.type === 'file' && node.name === fileName) {
+          return node;
+        }
+        if (node.children) {
+          const found = searchTree(node.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const file = searchTree(projectFiles);
+    if (file && file.content) {
+      openTab({
+        id: file.id,
+        title: file.name,
+        type: file.fileType || 'code',
+        content: file.content,
+        language: file.language,
+      });
+      return true;
+    }
+    return false;
+  }, [projectFiles, openTab]);
+
   return (
-    <WorkspaceContext.Provider value={{ tabs, activeTabId, projectFiles, openTab, closeTab, closeAllTabs, setActiveTab, openFileFromTree }}>
+    <WorkspaceContext.Provider value={{ tabs, activeTabId, projectFiles, openTab, closeTab, closeAllTabs, setActiveTab, openFileFromTree, findAndOpenFileByName }}>
       {children}
     </WorkspaceContext.Provider>
   );

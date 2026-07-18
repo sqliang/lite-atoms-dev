@@ -45,6 +45,51 @@ const DEMO_MESSAGES: ChatMessageData[] = [
     },
     attachments: [
       {
+        id: 'code-chart',
+        title: 'ChartWidget.tsx',
+        type: 'code',
+        language: 'typescript',
+        content: `import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+interface ChartWidgetProps {
+  title: string;
+  data: number[];
+}
+
+export function ChartWidget({ title, data }: ChartWidgetProps) {
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  const width = 300;
+  const height = 120;
+  const padding = 20;
+
+  const points = data
+    .map((d, i) => {
+      const x = padding + (i / (data.length - 1)) * (width - 2 * padding);
+      const y = height - padding - ((d - min) / range) * (height - 2 * padding);
+      return \`\${x},\${y}\`;
+    })
+    .join(' ');
+
+  const areaPoints = \`\${padding},\${height - padding} \${points} \${width - padding},\${height - padding}\`;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <svg viewBox={\`0 0 \${width} \${height}\`} className="w-full">
+          <polygon fill="currentColor" className="text-primary/10" points={areaPoints} />
+          <polyline fill="none" stroke="currentColor" strokeWidth="2" className="text-primary" points={points} />
+        </svg>
+      </CardContent>
+    </Card>
+  );
+}`,
+      },
+      {
         id: 'code-1',
         title: 'DashboardCard.tsx',
         type: 'code',
