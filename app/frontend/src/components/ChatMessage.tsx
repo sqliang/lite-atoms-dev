@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Bot, User, Eye, Code, FileText, Image, CheckCircle2, ChevronDown, ChevronUp, FileEdit, FileInput, FilePlus2, Shuffle } from 'lucide-react';
+import { Bot, User, Eye, Code, FileText, Image, ChevronDown, ChevronUp, FileEdit, FileInput, FilePlus2, Shuffle, Settings2 } from 'lucide-react';
 import { useWorkspace, TabType } from '@/context/WorkspaceContext';
 
 interface Attachment {
@@ -10,17 +10,20 @@ interface Attachment {
   language?: string;
 }
 
-interface Step {
-  label: string;
-  action?: 'read' | 'write' | 'update';
-  file?: string;
-}
+/**
+ * A step can be:
+ * - A plain text string (rendered as a paragraph with a dot indicator)
+ * - A file operation object (rendered as a clickable card)
+ */
+export type StepItem =
+  | string
+  | { type: 'file'; action: 'read' | 'write' | 'update'; file: string };
 
 export interface ChatMessageData {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  steps?: (string | Step)[];
+  steps?: StepItem[];
   attachments?: Attachment[];
   timestamp: Date;
   version?: {
@@ -48,17 +51,14 @@ export default function ChatMessage({ message }: ChatMessageProps) {
     });
   };
 
-  const handleStepClick = (step: string | Step) => {
-    if (typeof step === 'object' && step.file) {
-      // Open the file in workspace
-      openTab({
-        id: `file-${step.file}-${Date.now()}`,
-        title: step.file,
-        type: 'code',
-        content: `// Content of ${step.file}\n// Loading...`,
-        language: 'typescript',
-      });
-    }
+  const handleFileClick = (file: string) => {
+    openTab({
+      id: `file-${file}-${Date.now()}`,
+      title: file,
+      type: 'code',
+      content: `// Content of ${file}\n// Loading...`,
+      language: file.endsWith('.css') ? 'css' : file.endsWith('.json') ? 'json' : 'typescript',
+    });
   };
 
   const getAttachmentIcon = (type: TabType) => {
@@ -72,29 +72,26 @@ export default function ChatMessage({ message }: ChatMessageProps) {
     }
   };
 
-  const getStepIcon = (step: string | Step) => {
-    if (typeof step === 'object') {
-      switch (step.action) {
-        case 'read':
-          return <FileInput className="w-3 h-3 text-blue-400 flex-shrink-0" />;
-        case 'write':
-          return <FilePlus2 className="w-3 h-3 text-green-400 flex-shrink-0" />;
-        case 'update':
-          return <FileEdit className="w-3 h-3 text-amber-400 flex-shrink-0" />;
-        default:
-          return <CheckCircle2 className="w-3 h-3 text-green-500 flex-shrink-0" />;
-      }
+  const getFileActionIcon = (action: 'read' | 'write' | 'update') => {
+    switch (action) {
+      case 'read':
+        return <FileInput className="w-4 h-4 text-blue-400" />;
+      case 'write':
+        return <FilePlus2 className="w-4 h-4 text-green-400" />;
+      case 'update':
+        return <FileEdit className="w-4 h-4 text-amber-400" />;
     }
-    return <CheckCircle2 className="w-3 h-3 text-green-500 flex-shrink-0" />;
   };
 
-  const getStepLabel = (step: string | Step): string => {
-    if (typeof step === 'string') return step;
-    return step.label;
-  };
-
-  const isFileStep = (step: string | Step): boolean => {
-    return typeof step === 'object' && !!step.file;
+  const getFileActionLabel = (action: 'read' | 'write' | 'update') => {
+    switch (action) {
+      case 'read':
+        return '读取文件';
+      case 'write':
+        return '写入文件';
+      case 'update':
+        return '更新文件';
+    }
   };
 
   // User message - right aligned
@@ -121,11 +118,41 @@ export default function ChatMessage({ message }: ChatMessageProps) {
     );
   }
 
-  // Assistant message - left aligned with steps
+  // Assistant message
   const steps = message.steps || [];
-  const MAX_COLLAPSED_STEPS = 3;
+  const MAX_COLLAPSED_STEPS = 4;
   const hasMoreSteps = steps.length > MAX_COLLAPSED_STEPS;
   const visibleSteps = stepsExpanded ? steps : steps.slice(0, MAX_COLLAPSED_STEPS);
+
+  const renderStep = (step: StepItem, index: number) => {
+    if (typeof step === 'string') {
+      // Text step - rendered as paragraph with dot indicator
+      return (
+        <div key={index} className="flex gap-3 items-start py-1">
+          <div className="w-2 h-2 rounded-full bg-muted-foreground/40 mt-1.5 flex-shrink-0" />
+          <p className="text-[12px] text-foreground/70 leading-relaxed">{step}</p>
+        </div>
+      );
+    }
+
+    // File operation step - rendered as a clickable card
+    return (
+      <div
+        key={index}
+        className="flex items-center gap-3 px-3.5 py-2.5 my-1 rounded-lg border border-border/50 bg-secondary/30 hover:bg-secondary/60 hover:border-border/80 transition-all duration-150 cursor-pointer group"
+        onClick={() => handleFileClick(step.file)}
+      >
+        {getFileActionIcon(step.action)}
+        <span className="text-[12px] text-muted-foreground/80 font-medium">
+          {getFileActionLabel(step.action)}
+        </span>
+        <span className="text-[12px] text-foreground/80 font-mono group-hover:text-primary transition-colors">
+          {step.file}
+        </span>
+        <Eye className="w-3 h-3 text-muted-foreground/30 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+    );
+  };
 
   return (
     <div className="flex gap-3 px-4 py-3">
@@ -133,7 +160,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
         <Bot className="w-4 h-4" />
       </div>
 
-      <div className="flex-1 min-w-0 space-y-2">
+      <div className="flex-1 min-w-0 space-y-2.5">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-foreground/80">Coding Agent</span>
           <span className="text-[10px] text-muted-foreground">
@@ -141,49 +168,33 @@ export default function ChatMessage({ message }: ChatMessageProps) {
           </span>
         </div>
 
-        {/* Processing steps - collapsible */}
+        {/* Processing steps - collapsible workflow */}
         {steps.length > 0 && (
-          <div className="bg-secondary/40 border border-border/40 rounded-lg px-3 py-2.5 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] text-muted-foreground/70 uppercase tracking-wider font-medium">
-                处理步骤 ({steps.length})
-              </p>
-              {hasMoreSteps && (
-                <button
-                  onClick={() => setStepsExpanded(!stepsExpanded)}
-                  className="flex items-center gap-1 text-[10px] text-primary/70 hover:text-primary transition-colors cursor-pointer"
-                >
-                  {stepsExpanded ? (
-                    <>
-                      收起 <ChevronUp className="w-3 h-3" />
-                    </>
-                  ) : (
-                    <>
-                      展开全部 <ChevronDown className="w-3 h-3" />
-                    </>
-                  )}
-                </button>
+          <div className="space-y-0.5">
+            {/* Workflow header */}
+            <button
+              onClick={() => setStepsExpanded(!stepsExpanded)}
+              className="flex items-center gap-2 text-xs text-muted-foreground/80 hover:text-foreground/80 transition-colors cursor-pointer py-1"
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              <span className="font-medium">工作流程</span>
+              {stepsExpanded ? (
+                <ChevronUp className="w-3 h-3" />
+              ) : (
+                <ChevronDown className="w-3 h-3" />
               )}
-            </div>
-            {visibleSteps.map((step, index) => (
-              <div
-                key={index}
-                className={`flex items-center gap-2 ${isFileStep(step) ? 'hover:bg-secondary/60 rounded px-1 -mx-1 cursor-pointer group' : ''}`}
-                onClick={() => handleStepClick(step)}
-              >
-                {getStepIcon(step)}
-                <span className={`text-[11px] text-foreground/70 ${isFileStep(step) ? 'group-hover:text-primary transition-colors' : ''}`}>
-                  {getStepLabel(step)}
+              {!stepsExpanded && hasMoreSteps && (
+                <span className="text-[10px] text-muted-foreground/50 ml-1">
+                  ({steps.length} 步)
                 </span>
-                {isFileStep(step) && (
-                  <Eye className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity ml-auto" />
-                )}
+              )}
+            </button>
+
+            {/* Steps content */}
+            {stepsExpanded && (
+              <div className="pl-1 border-l-2 border-border/30 ml-1.5 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                {visibleSteps.map((step, index) => renderStep(step, index))}
               </div>
-            ))}
-            {!stepsExpanded && hasMoreSteps && (
-              <p className="text-[10px] text-muted-foreground/50 pl-5">
-                还有 {steps.length - MAX_COLLAPSED_STEPS} 个步骤...
-              </p>
             )}
           </div>
         )}

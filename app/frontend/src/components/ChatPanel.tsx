@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Sparkles, History, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import ChatMessage, { ChatMessageData } from './ChatMessage';
+import ChatMessage, { ChatMessageData, StepItem } from './ChatMessage';
 
 interface Version {
   id: string;
@@ -27,15 +27,18 @@ const DEMO_MESSAGES: ChatMessageData[] = [
     role: 'assistant',
     content: '已完成仪表盘组件的创建，包含响应式面积图和数据指标卡片。',
     steps: [
-      { label: '读取文件 package.json', action: 'read', file: 'package.json' },
-      { label: '读取文件 App.tsx', action: 'read', file: 'App.tsx' },
-      '分析需求，确定组件结构',
-      { label: '写入文件 DashboardCard.tsx', action: 'write', file: 'DashboardCard.tsx' },
-      { label: '写入文件 ChartWidget.tsx', action: 'write', file: 'ChartWidget.tsx' },
-      { label: '更新文件 App.tsx', action: 'update', file: 'App.tsx' },
-      '添加响应式布局和主题适配',
-      { label: '更新文件 index.css', action: 'update', file: 'index.css' },
-    ],
+      'I\'m getting started.',
+      '正在处理图片附件...',
+      '已成功处理 1 个图片附件。',
+      { type: 'file', action: 'read', file: 'package.json' },
+      { type: 'file', action: 'read', file: 'App.tsx' },
+      'Let me implement the dashboard components. I\'ll create the card and chart widgets:',
+      { type: 'file', action: 'write', file: 'DashboardCard.tsx' },
+      { type: 'file', action: 'write', file: 'ChartWidget.tsx' },
+      'Now update the main app to integrate the new components:',
+      { type: 'file', action: 'update', file: 'App.tsx' },
+      { type: 'file', action: 'update', file: 'index.css' },
+    ] as StepItem[],
     version: {
       label: '版本 2',
       description: '新增仪表盘组件',
@@ -62,13 +65,13 @@ const DEMO_MESSAGES: ChatMessageData[] = [
     role: 'assistant',
     content: '已生成现代风格的仪表盘 Hero 图片，采用深色渐变背景和抽象数据可视化元素。',
     steps: [
-      '确定图片风格和配色方案',
-      { label: '读取文件 theme.config.ts', action: 'read', file: 'theme.config.ts' },
-      '生成深色渐变背景',
-      '添加抽象数据可视化元素',
-      { label: '写入文件 hero-banner.png', action: 'write', file: 'hero-banner.png' },
-      { label: '更新文件 HomePage.tsx', action: 'update', file: 'HomePage.tsx' },
-    ],
+      '确定图片风格和配色方案，采用深色渐变背景搭配抽象数据可视化元素。',
+      { type: 'file', action: 'read', file: 'theme.config.ts' },
+      '正在生成深色渐变背景和抽象数据可视化元素...',
+      { type: 'file', action: 'write', file: 'hero-banner.png' },
+      'Now update the homepage to use the generated hero image:',
+      { type: 'file', action: 'update', file: 'HomePage.tsx' },
+    ] as StepItem[],
     version: {
       label: '版本 3',
       description: '功能优化完成',
@@ -136,13 +139,15 @@ export default function ChatPanel() {
         role: 'assistant',
         content: '已根据你的需求完成代码生成和功能构建。',
         steps: [
-          { label: '读取文件 App.tsx', action: 'read', file: 'App.tsx' },
-          '解析用户需求',
-          '设计组件结构',
-          { label: '写入文件 Component.tsx', action: 'write', file: 'Component.tsx' },
-          { label: '更新文件 App.tsx', action: 'update', file: 'App.tsx' },
-          '验证功能完整性',
-        ],
+          'I\'m getting started.',
+          '正在处理用户需求...',
+          { type: 'file', action: 'read', file: 'App.tsx' },
+          'Let me create the component based on your requirements:',
+          { type: 'file', action: 'write', file: 'Component.tsx' },
+          'Now integrating the component into the app:',
+          { type: 'file', action: 'update', file: 'App.tsx' },
+          '验证功能完整性，所有测试通过。',
+        ] as StepItem[],
         version: {
           label: '版本 4',
           description: '新增功能组件',
