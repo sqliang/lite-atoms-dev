@@ -24,7 +24,7 @@ export default function WorkspacePanel() {
 
   if (tabs.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-[hsl(222,47%,5%)] text-center px-8">
+      <div className="h-full flex flex-col items-center justify-center bg-card text-center px-8">
         <div className="w-16 h-16 rounded-2xl bg-secondary/40 flex items-center justify-center mb-5">
           <Layers className="w-7 h-7 text-muted-foreground/40" />
         </div>
@@ -37,16 +37,16 @@ export default function WorkspacePanel() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-[hsl(222,47%,5%)]">
+    <div className="h-full flex flex-col bg-card">
       {/* Tab bar */}
-      <div className="flex items-center h-9 border-b border-border/40 bg-[hsl(222,47%,6%)] overflow-x-auto flex-shrink-0">
+      <div className="flex items-center h-9 border-b border-border bg-background overflow-x-auto flex-shrink-0">
         {tabs.map((tab) => (
           <div
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`group flex items-center gap-1.5 px-3 h-full border-r border-border/30 cursor-pointer transition-colors duration-150 min-w-0 ${
               tab.id === activeTabId
-                ? 'bg-[hsl(222,47%,5%)] text-foreground border-b-0 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-primary/60'
+                ? 'bg-card text-foreground border-b-0 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-primary/60'
                 : 'text-muted-foreground hover:text-foreground/80 hover:bg-secondary/20'
             }`}
           >

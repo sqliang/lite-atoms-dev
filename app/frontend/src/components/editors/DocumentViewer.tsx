@@ -23,7 +23,7 @@ function parseMarkdown(md: string): string {
   // Code blocks
   html = html.replace(
     /```(\w*)\n([\s\S]*?)```/g,
-    '<pre class="my-3 p-4 rounded-lg bg-[hsl(222,47%,5%)] border border-border/30 overflow-x-auto"><code class="text-[12px] font-mono text-foreground/80 leading-relaxed">$2</code></pre>'
+    '<pre class="my-3 p-4 rounded-lg bg-secondary border border-border overflow-x-auto"><code class="text-[12px] font-mono text-foreground/80 leading-relaxed">$2</code></pre>'
   );
 
   // Tables
@@ -64,7 +64,7 @@ export default function DocumentViewer({ content, title }: DocumentViewerProps) 
   const renderedHtml = useMemo(() => parseMarkdown(content), [content]);
 
   return (
-    <div className="h-full overflow-auto bg-[hsl(222,47%,6%)] workspace-enter">
+    <div className="h-full overflow-auto bg-card workspace-enter">
       <div className="max-w-2xl mx-auto px-8 py-8">
         {/* Document title */}
         <div className="mb-6 pb-4 border-b border-border/30">

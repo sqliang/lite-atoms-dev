@@ -23,7 +23,7 @@ export default function CodeEditor({ content, language = 'typescript' }: CodeEdi
   const lines = content.split('\n');
 
   return (
-    <div className="h-full overflow-auto bg-[hsl(222,47%,5%)] workspace-enter">
+    <div className="h-full overflow-auto bg-card workspace-enter">
       <div className="flex min-h-full">
         {/* Line numbers */}
         <div className="flex-shrink-0 py-4 px-3 text-right select-none border-r border-border/30">

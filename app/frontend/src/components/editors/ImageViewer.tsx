@@ -12,7 +12,7 @@ export default function ImageViewer({ content, title }: ImageViewerProps) {
   const [rotation, setRotation] = useState(0);
 
   return (
-    <div className="h-full flex flex-col bg-[hsl(222,47%,4%)] workspace-enter">
+    <div className="h-full flex flex-col bg-background workspace-enter">
       {/* Toolbar */}
       <div className="flex items-center gap-1 px-3 py-2 border-b border-border/30">
         <Button
