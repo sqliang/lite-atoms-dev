@@ -27,6 +27,7 @@ interface WorkspaceContextType {
   projectFiles: FileNode[];
   openTab: (tab: Omit<WorkspaceTab, 'isActive'>) => void;
   closeTab: (id: string) => void;
+  closeAllTabs: () => void;
   setActiveTab: (id: string) => void;
   openFileFromTree: (file: FileNode) => void;
 }
@@ -574,6 +575,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setActiveTabId(id);
   }, []);
 
+  const closeAllTabs = useCallback(() => {
+    setTabs([]);
+    setActiveTabId(null);
+  }, []);
+
   const openFileFromTree = useCallback((file: FileNode) => {
     if (file.type === 'folder' || !file.content) return;
     openTab({
@@ -586,7 +592,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [openTab]);
 
   return (
-    <WorkspaceContext.Provider value={{ tabs, activeTabId, projectFiles, openTab, closeTab, setActiveTab, openFileFromTree }}>
+    <WorkspaceContext.Provider value={{ tabs, activeTabId, projectFiles, openTab, closeTab, closeAllTabs, setActiveTab, openFileFromTree }}>
       {children}
     </WorkspaceContext.Provider>
   );

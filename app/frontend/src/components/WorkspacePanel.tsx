@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { X, Code, FileText, Image, Layers, Copy, Download, Eye, SquareCode } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { X, Code, FileText, Image, Layers, Copy, Download, Eye, SquareCode, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Button } from '@/components/ui/button';
 import { useWorkspace } from '@/context/WorkspaceContext';
@@ -49,9 +49,20 @@ function fallbackCopyToClipboard(text: string): boolean {
 }
 
 export default function WorkspacePanel() {
-  const { tabs, activeTabId, closeTab, setActiveTab, projectFiles } = useWorkspace();
+  const { tabs, activeTabId, closeTab, closeAllTabs, setActiveTab, projectFiles } = useWorkspace();
   const [isTreeCollapsed, setIsTreeCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('code');
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    if (tabsContainerRef.current) {
+      const scrollAmount = 150;
+      tabsContainerRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth',
+      });
+    }
+  };
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
@@ -172,32 +183,71 @@ export default function WorkspacePanel() {
 
             {/* Tabs (only in code mode) */}
             {viewMode === 'code' && (
-              <div className="flex-1 flex items-center overflow-x-auto">
-                {tabs.map((tab) => (
-                  <div
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`group flex items-center gap-1.5 px-3 h-full border-r border-border/30 cursor-pointer transition-colors duration-150 min-w-0 ${
-                      tab.id === activeTabId
-                        ? 'bg-card text-foreground border-b-0 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-primary/60'
-                        : 'text-muted-foreground hover:text-foreground/80 hover:bg-secondary/20'
-                    }`}
+              <div className="flex-1 flex items-center overflow-hidden min-w-0">
+                {/* Scroll left button */}
+                {tabs.length > 0 && (
+                  <button
+                    onClick={() => scrollTabs('left')}
+                    className="flex-shrink-0 w-5 h-full flex items-center justify-center hover:bg-secondary/40 transition-colors cursor-pointer"
                   >
-                    <span className={tab.id === activeTabId ? 'text-primary' : 'text-muted-foreground/60'}>
-                      {getTabIcon(tab.type)}
-                    </span>
-                    <span className="text-[11px] font-medium truncate max-w-[100px]">{tab.title}</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        closeTab(tab.id);
-                      }}
-                      className="ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-secondary/60 transition-all cursor-pointer"
+                    <ChevronLeft className="w-3 h-3 text-muted-foreground" />
+                  </button>
+                )}
+
+                {/* Scrollable tabs container */}
+                <div
+                  ref={tabsContainerRef}
+                  className="flex-1 flex items-center overflow-x-auto scrollbar-hide"
+                >
+                  {tabs.map((tab) => (
+                    <div
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`group flex items-center gap-1.5 px-3 h-full border-r border-border/30 cursor-pointer transition-colors duration-150 flex-shrink-0 ${
+                        tab.id === activeTabId
+                          ? 'bg-card text-foreground border-b-0 relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-primary/60'
+                          : 'text-muted-foreground hover:text-foreground/80 hover:bg-secondary/20'
+                      }`}
                     >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
+                      <span className={tab.id === activeTabId ? 'text-primary' : 'text-muted-foreground/60'}>
+                        {getTabIcon(tab.type)}
+                      </span>
+                      <span className="text-[11px] font-medium truncate max-w-[100px]">{tab.title}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          closeTab(tab.id);
+                        }}
+                        className="ml-1 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-secondary/60 transition-all cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Scroll right button */}
+                {tabs.length > 0 && (
+                  <button
+                    onClick={() => scrollTabs('right')}
+                    className="flex-shrink-0 w-5 h-full flex items-center justify-center hover:bg-secondary/40 transition-colors cursor-pointer"
+                  >
+                    <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                  </button>
+                )}
+
+                {/* Close all tabs button */}
+                {tabs.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="w-6 h-6 flex-shrink-0 mx-1 cursor-pointer"
+                    onClick={closeAllTabs}
+                    title="关闭所有文件"
+                  >
+                    <XCircle className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+                  </Button>
+                )}
               </div>
             )}
 
