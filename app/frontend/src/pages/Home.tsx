@@ -88,31 +88,6 @@ export default function HomePage() {
             </div>
             <span className="text-sm font-semibold text-foreground">AI Workspace</span>
           </div>
-          {/* User Avatar */}
-          <div className="relative">
-            <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="w-7 h-7 rounded-full bg-secondary border border-border/60 flex items-center justify-center hover:bg-secondary/80 transition-colors cursor-pointer"
-              title={user?.email || ''}
-            >
-              <User className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-            {showUserMenu && (
-              <div className="absolute right-0 top-9 w-48 bg-card border border-border/80 rounded-lg shadow-lg py-1 z-50">
-                <div className="px-3 py-2 border-b border-border/40">
-                  <p className="text-[11px] text-muted-foreground/60">登录账户</p>
-                  <p className="text-xs text-foreground truncate">{user?.email}</p>
-                </div>
-                <button
-                  onClick={handleSignOut}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors cursor-pointer"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  退出登录
-                </button>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Project List */}
@@ -142,6 +117,34 @@ export default function HomePage() {
                 </div>
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* User Info - Bottom */}
+        <div className="flex-shrink-0 border-t border-border/40 px-3 py-3">
+          <div className="relative">
+            <button
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-secondary/60 transition-colors cursor-pointer"
+            >
+              <div className="w-7 h-7 rounded-full bg-secondary border border-border/60 flex items-center justify-center flex-shrink-0">
+                <User className="w-3.5 h-3.5 text-muted-foreground" />
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                <p className="text-xs text-foreground/90 truncate">{user?.email}</p>
+              </div>
+            </button>
+            {showUserMenu && (
+              <div className="absolute left-0 bottom-full mb-1 w-full bg-card border border-border/80 rounded-lg shadow-lg py-1 z-50">
+                <button
+                  onClick={handleSignOut}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  退出登录
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </aside>
