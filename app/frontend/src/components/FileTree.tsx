@@ -1,6 +1,11 @@
 import { useState } from 'react';
-import { ChevronRight, ChevronDown, File, Folder, FolderOpen } from 'lucide-react';
+import { ChevronRight, ChevronDown, File, Folder, FolderOpen, FolderDown } from 'lucide-react';
 import { FileNode, useWorkspace } from '@/context/WorkspaceContext';
+import { Button } from '@/components/ui/button';
+
+interface FileTreeProps {
+  onDownloadProject: () => void;
+}
 
 interface FileTreeNodeProps {
   node: FileNode;
@@ -91,7 +96,7 @@ function FileTreeNode({ node, depth }: FileTreeNodeProps) {
   );
 }
 
-export default function FileTree() {
+export default function FileTree({ onDownloadProject }: FileTreeProps) {
   const { projectFiles } = useWorkspace();
 
   return (
@@ -114,6 +119,19 @@ export default function FileTree() {
         {projectFiles.map((node) => (
           <FileTreeNode key={node.id} node={node} depth={0} />
         ))}
+      </div>
+
+      {/* Download project button */}
+      <div className="p-2 border-t border-border flex-shrink-0">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full gap-2 text-xs cursor-pointer"
+          onClick={onDownloadProject}
+        >
+          <FolderDown className="w-3.5 h-3.5" />
+          Download Project
+        </Button>
       </div>
     </div>
   );
