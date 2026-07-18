@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, History } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Sparkles, History, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ChatMessage, { ChatMessageData } from './ChatMessage';
 
@@ -25,14 +25,21 @@ const DEMO_MESSAGES: ChatMessageData[] = [
   {
     id: '2',
     role: 'assistant',
-    content:
-      '已完成仪表盘组件的创建，包含响应式面积图和数据指标卡片。',
+    content: '已完成仪表盘组件的创建，包含响应式面积图和数据指标卡片。',
     steps: [
+      { label: '读取文件 package.json', action: 'read', file: 'package.json' },
+      { label: '读取文件 App.tsx', action: 'read', file: 'App.tsx' },
       '分析需求，确定组件结构',
-      '创建 DashboardCard 组件',
-      '实现 SVG 迷你图表',
+      { label: '写入文件 DashboardCard.tsx', action: 'write', file: 'DashboardCard.tsx' },
+      { label: '写入文件 ChartWidget.tsx', action: 'write', file: 'ChartWidget.tsx' },
+      { label: '更新文件 App.tsx', action: 'update', file: 'App.tsx' },
       '添加响应式布局和主题适配',
+      { label: '更新文件 index.css', action: 'update', file: 'index.css' },
     ],
+    version: {
+      label: '版本 2',
+      description: '新增仪表盘组件',
+    },
     attachments: [
       {
         id: 'code-1',
@@ -40,12 +47,6 @@ const DEMO_MESSAGES: ChatMessageData[] = [
         type: 'code',
         language: 'typescript',
         content: `import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';\nimport { TrendingUp } from 'lucide-react';\n\ninterface DashboardCardProps {\n  title: string;\n  value: string;\n  change: number;\n  data: number[];\n}\n\nexport function DashboardCard({ title, value, change, data }: DashboardCardProps) {\n  const max = Math.max(...data);\n  const min = Math.min(...data);\n  const range = max - min || 1;\n\n  const points = data\n    .map((d, i) => {\n      const x = (i / (data.length - 1)) * 200;\n      const y = 40 - ((d - min) / range) * 36;\n      return \`\${x},\${y}\`;\n    })\n    .join(' ');\n\n  return (\n    <Card className="hover:shadow-lg transition-shadow duration-300">\n      <CardHeader className="flex flex-row items-center justify-between pb-2">\n        <CardTitle className="text-sm font-medium text-muted-foreground">\n          {title}\n        </CardTitle>\n        <TrendingUp className={\`w-4 h-4 \${change >= 0 ? 'text-green-500' : 'text-red-500'}\`} />\n      </CardHeader>\n      <CardContent>\n        <div className="text-2xl font-bold">{value}</div>\n        <p className="text-xs text-muted-foreground mt-1">\n          {change >= 0 ? '+' : ''}{change}% from last month\n        </p>\n        <svg viewBox="0 0 200 44" className="w-full h-12 mt-3">\n          <polyline\n            fill="none"\n            stroke="currentColor"\n            strokeWidth="2"\n            className="text-primary"\n            points={points}\n          />\n        </svg>\n      </CardContent>\n    </Card>\n  );\n}`,
-      },
-      {
-        id: 'doc-1',
-        title: 'Usage Guide.md',
-        type: 'document',
-        content: `# DashboardCard Component\n\n## Overview\nA reusable dashboard card component that displays a metric with a sparkline chart.\n\n## Props\n| Prop | Type | Description |\n|------|------|-------------|\n| title | string | Card title label |\n| value | string | Main metric value |\n| change | number | Percentage change |\n| data | number[] | Chart data points |\n\n## Usage\n\n\`\`\`tsx\n<DashboardCard\n  title="Total Revenue"\n  value="$45,231.89"\n  change={20.1}\n  data={[10, 25, 18, 30, 28, 35, 42]}\n/>\n\`\`\``,
       },
     ],
     timestamp: new Date(Date.now() - 240000),
@@ -59,13 +60,19 @@ const DEMO_MESSAGES: ChatMessageData[] = [
   {
     id: '4',
     role: 'assistant',
-    content:
-      '已生成现代风格的仪表盘 Hero 图片，采用深色渐变背景和抽象数据可视化元素。',
+    content: '已生成现代风格的仪表盘 Hero 图片，采用深色渐变背景和抽象数据可视化元素。',
     steps: [
       '确定图片风格和配色方案',
+      { label: '读取文件 theme.config.ts', action: 'read', file: 'theme.config.ts' },
       '生成深色渐变背景',
       '添加抽象数据可视化元素',
+      { label: '写入文件 hero-banner.png', action: 'write', file: 'hero-banner.png' },
+      { label: '更新文件 HomePage.tsx', action: 'update', file: 'HomePage.tsx' },
     ],
+    version: {
+      label: '版本 3',
+      description: '功能优化完成',
+    },
     attachments: [
       {
         id: 'img-1',
@@ -83,7 +90,9 @@ export default function ChatPanel() {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // TODO: Get project name from server based on session ID
@@ -92,6 +101,19 @@ export default function ChatPanel() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Detect scroll position to show/hide scroll-to-bottom button
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 80;
+    setShowScrollButton(!isNearBottom);
+  }, []);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -112,14 +134,19 @@ export default function ChatPanel() {
       const aiMessage: ChatMessageData = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content:
-          '已根据你的需求完成代码生成和功能构建。',
+        content: '已根据你的需求完成代码生成和功能构建。',
         steps: [
+          { label: '读取文件 App.tsx', action: 'read', file: 'App.tsx' },
           '解析用户需求',
           '设计组件结构',
-          '生成代码实现',
+          { label: '写入文件 Component.tsx', action: 'write', file: 'Component.tsx' },
+          { label: '更新文件 App.tsx', action: 'update', file: 'App.tsx' },
           '验证功能完整性',
         ],
+        version: {
+          label: '版本 4',
+          description: '新增功能组件',
+        },
         attachments: [
           {
             id: `code-${Date.now()}`,
@@ -144,7 +171,7 @@ export default function ChatPanel() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full bg-background relative">
       {/* Header */}
       <div className="flex items-center justify-between px-4 h-12 border-b border-border/60 flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -189,13 +216,17 @@ export default function ChatPanel() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto relative"
+        onScroll={handleScroll}
+      >
         <div className="py-2">
           {messages.map((msg) => (
             <ChatMessage key={msg.id} message={msg} />
           ))}
           {isTyping && (
-            <div className="flex gap-3 px-4 py-3 bg-secondary/30">
+            <div className="flex gap-3 px-4 py-3">
               <div className="flex-shrink-0 w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
                 <Sparkles className="w-4 h-4 text-primary animate-pulse" />
               </div>
@@ -209,6 +240,20 @@ export default function ChatPanel() {
           <div ref={messagesEndRef} />
         </div>
       </div>
+
+      {/* Scroll to bottom button */}
+      {showScrollButton && (
+        <div className="absolute bottom-[120px] left-1/2 -translate-x-1/2 z-40">
+          <Button
+            variant="secondary"
+            size="icon"
+            className="w-8 h-8 rounded-full shadow-lg border border-border/60 cursor-pointer hover:bg-primary/10 transition-all duration-200"
+            onClick={scrollToBottom}
+          >
+            <ArrowDown className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
 
       {/* Input */}
       <div className="p-3 border-t border-border/60 flex-shrink-0">
