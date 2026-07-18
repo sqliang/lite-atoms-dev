@@ -52,13 +52,36 @@ export default function ChatMessage({ message }: ChatMessageProps) {
   };
 
   const handleFileClick = (file: string) => {
-    openTab({
-      id: `file-${file}-${Date.now()}`,
-      title: file,
-      type: 'code',
-      content: `// Content of ${file}\n// Loading...`,
-      language: file.endsWith('.css') ? 'css' : file.endsWith('.json') ? 'json' : 'typescript',
-    });
+    // Try to find matching attachment by filename
+    const matchingAttachment = message.attachments?.find(
+      (att) => att.title === file || att.title.endsWith(file)
+    );
+
+    if (matchingAttachment) {
+      // Open the actual attachment content
+      openTab({
+        id: matchingAttachment.id,
+        title: matchingAttachment.title,
+        type: matchingAttachment.type,
+        content: matchingAttachment.content,
+        language: matchingAttachment.language,
+      });
+    } else {
+      // Fallback: open with filename as tab, infer language from extension
+      const ext = file.split('.').pop() || '';
+      const langMap: Record<string, string> = {
+        ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+        css: 'css', json: 'json', html: 'html', md: 'markdown', yaml: 'yaml',
+        py: 'python', go: 'go', rs: 'rust',
+      };
+      openTab({
+        id: `file-${file}-${message.id}`,
+        title: file,
+        type: 'code',
+        content: `// ${file}\n// This file was referenced in the workflow but its content is not available in this message.`,
+        language: langMap[ext] || 'typescript',
+      });
+    }
   };
 
   const getAttachmentIcon = (type: TabType) => {
