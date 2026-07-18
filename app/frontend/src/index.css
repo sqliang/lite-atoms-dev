@@ -152,8 +152,75 @@
   }
 }
 
-/* Code block styling */
+/* Code block styling - ensure syntax highlighting colors are vivid and not washed out */
 .hljs {
   background: transparent !important;
   padding: 0 !important;
+  color: #e6edf3 !important;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-name,
+.hljs-tag {
+  color: #ff7b72 !important;
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-section,
+.hljs-attribute,
+.hljs-literal,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type {
+  color: #a5d6ff !important;
+}
+
+.hljs-string {
+  color: #a5d6ff !important;
+}
+
+.hljs-comment,
+.hljs-deletion {
+  color: #8b949e !important;
+}
+
+.hljs-number,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-quote {
+  color: #79c0ff !important;
+}
+
+.hljs-variable,
+.hljs-template-variable {
+  color: #ffa657 !important;
+}
+
+.hljs-function .hljs-title,
+.hljs-title.function_ {
+  color: #d2a8ff !important;
+}
+
+.hljs-params {
+  color: #e6edf3 !important;
+}
+
+.hljs-attr {
+  color: #79c0ff !important;
+}
+
+.hljs-symbol,
+.hljs-bullet {
+  color: #ffa657 !important;
+}
+
+.hljs-meta {
+  color: #8b949e !important;
+}
+
+.hljs-addition {
+  color: #aff5b4 !important;
 }
