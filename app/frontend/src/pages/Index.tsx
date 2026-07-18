@@ -1,9 +1,9 @@
-import { Navigate } from 'react-router-dom';
+import HomePage from './Home';
 
 /**
- * Index page redirects to a default demo project session.
- * TODO: In production, show HomePage for new users or redirect to last active session.
+ * Index page shows the Home page where users can start new projects
+ * or navigate to existing ones.
  */
 export default function Index() {
-  return <Navigate to="/project/session-1720000000000-abc123" replace />;
+  return <HomePage />;
 }

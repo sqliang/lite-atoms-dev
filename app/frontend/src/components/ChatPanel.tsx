@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Sparkles, History, ArrowDown } from 'lucide-react';
+import { Send, Sparkles, History, ArrowDown, Home } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import ChatMessage, { ChatMessageData, StepItem } from './ChatMessage';
 
@@ -142,6 +143,7 @@ export default function ChatPanel() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const navigate = useNavigate();
 
   // TODO: Get project name from server based on session ID
   const projectName = 'Dashboard App';
@@ -225,6 +227,15 @@ export default function ChatPanel() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 h-12 border-b border-border/60 flex-shrink-0">
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="w-7 h-7 cursor-pointer"
+            onClick={() => navigate('/')}
+            title="返回首页"
+          >
+            <Home className="w-4 h-4" />
+          </Button>
           <div className="w-6 h-6 rounded-md bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
             <Sparkles className="w-3.5 h-3.5 text-primary-foreground" />
           </div>
