@@ -246,7 +246,7 @@ export default function FileTree({ onDownloadProject, isCollapsed, onToggleColla
           onClick={onDownloadProject}
         >
           <FolderDown className="w-3.5 h-3.5" />
-          Download Project
+          下载项目
         </Button>
       </div>
     </div>
