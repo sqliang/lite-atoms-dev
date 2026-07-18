@@ -152,6 +152,15 @@
   }
 }
 
+/* Code editor dark container for proper contrast */
+.code-editor-container {
+  background: #0d1117 !important;
+}
+
+.code-editor-gutter {
+  border-right: 1px solid #21262d;
+}
+
 /* Code block styling - ensure syntax highlighting colors are vivid and not washed out */
 .hljs {
   background: transparent !important;
