@@ -1,4 +1,5 @@
-import { X, Code, FileText, Image, Layers, Copy, Download, FolderDown } from 'lucide-react';
+import { useState } from 'react';
+import { X, Code, FileText, Image, Layers, Copy, Download } from 'lucide-react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { Button } from '@/components/ui/button';
 import { useWorkspace } from '@/context/WorkspaceContext';
@@ -46,6 +47,7 @@ function fallbackCopyToClipboard(text: string): boolean {
 
 export default function WorkspacePanel() {
   const { tabs, activeTabId, closeTab, setActiveTab, projectFiles } = useWorkspace();
+  const [isTreeCollapsed, setIsTreeCollapsed] = useState(false);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
@@ -65,7 +67,7 @@ export default function WorkspacePanel() {
   const handleCopyFile = async () => {
     if (!activeTab) return;
     const content = activeTab.content;
-    
+
     // Try modern clipboard API first
     if (navigator.clipboard && window.isSecureContext) {
       try {
@@ -76,7 +78,7 @@ export default function WorkspacePanel() {
         // Fall through to fallback
       }
     }
-    
+
     // Fallback for non-HTTPS contexts
     const success = fallbackCopyToClipboard(content);
     if (success) {
@@ -108,7 +110,7 @@ export default function WorkspacePanel() {
     }
 
     const zip = new JSZip();
-    
+
     for (const file of allFiles) {
       zip.file(file.path, file.content);
     }
@@ -125,8 +127,16 @@ export default function WorkspacePanel() {
   return (
     <PanelGroup direction="horizontal" className="h-full">
       {/* File Tree Sidebar */}
-      <Panel defaultSize={22} minSize={15} maxSize={35}>
-        <FileTree onDownloadProject={handleDownloadProject} />
+      <Panel
+        defaultSize={isTreeCollapsed ? 3 : 22}
+        minSize={isTreeCollapsed ? 3 : 15}
+        maxSize={isTreeCollapsed ? 4 : 35}
+      >
+        <FileTree
+          onDownloadProject={handleDownloadProject}
+          isCollapsed={isTreeCollapsed}
+          onToggleCollapse={() => setIsTreeCollapsed(!isTreeCollapsed)}
+        />
       </Panel>
 
       <PanelResizeHandle className="w-px bg-border hover:bg-primary/30 transition-colors" />
