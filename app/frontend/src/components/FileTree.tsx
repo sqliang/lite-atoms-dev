@@ -143,9 +143,9 @@ function FileTreeNode({ node, depth, searchQuery }: FileTreeNodeProps) {
     <div>
       <div
         onClick={handleClick}
-        className={`flex items-center gap-1 py-[3px] px-2 cursor-pointer transition-colors duration-100 rounded-sm mx-1 ${
+        className={`relative flex items-center gap-1 py-[3px] px-2 cursor-pointer transition-colors duration-100 rounded-sm mx-1 ${
           isActive
-            ? 'bg-accent text-accent-foreground'
+            ? 'bg-primary/10 text-primary font-medium before:absolute before:left-0 before:top-0.5 before:bottom-0.5 before:w-0.5 before:rounded-full before:bg-primary'
             : 'hover:bg-accent/50 text-foreground/80'
         }`}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
