@@ -35,7 +35,17 @@ def validate_source_tree(root: Path) -> None:
     This intentionally conservative lexical pass is the first deterministic guard. The
     TypeScript compiler and locked package manager remain the second guard in Build Runner.
     """
-    files = [path for path in root.rglob("*") if path.is_file() and ".git" not in path.parts]
+    # The build runner copies node_modules into the worktree; dependency and build
+    # output directories are never "generated source" and must not count toward the
+    # file budget or trip the path/suffix checks (repair re-validates after a build).
+    files = [
+        path
+        for path in root.rglob("*")
+        if path.is_file()
+        and ".git" not in path.parts
+        and "node_modules" not in path.parts
+        and "dist" not in path.parts
+    ]
     if len(files) > MAX_FILES:
         raise SourcePolicyError(f"Generated project exceeds {MAX_FILES} files")
     for path in files:

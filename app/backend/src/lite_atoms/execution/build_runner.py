@@ -37,7 +37,9 @@ def run_build(worktree: Path) -> BuildResult:
             # copy preserves the locked bytes while making the mounted worktree writable.
             # Docker SDK splits a string command into argv. This image deliberately uses
             # `/bin/sh -lc`, so the complete script must remain one argument after `-c`.
-            [f"cd {workspace} && cp -R /opt/dependencies/node_modules ./ && pnpm run typecheck && pnpm run build"],
+            # node_modules is removed again afterwards (success or failure): the shared
+            # worktree must stay dependency-free for re-validation and promotion.
+            [f"cd {workspace} && cp -R /opt/dependencies/node_modules ./ && (pnpm run typecheck && pnpm run build); rc=$?; rm -rf node_modules; exit $rc"],
             detach=True,
             network_mode="none",
             user="10001:10001",

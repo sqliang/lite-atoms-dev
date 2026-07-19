@@ -119,3 +119,17 @@ def test_reference_excerpts_full_file_and_skips(tmp_path: Path) -> None:
         ],
     )
     assert excerpts == [{"path": "src/App.tsx", "start_line": None, "end_line": None, "excerpt": "hello"}]
+
+
+def test_write_source_budget_rejects_new_files_but_allows_rewrites(tmp_path: Path) -> None:
+    """Past the soft budget, new files get consolidation guidance; rewrites still work."""
+    src = tmp_path / "src"
+    src.mkdir()
+    for index in range(80):
+        (src / f"file{index}.ts").write_text("x")
+    result = _write_tool(tmp_path).invoke({"path": "src/file80.ts", "content": "new"})
+    assert result.startswith("rejected:")
+    assert not (src / "file80.ts").exists()
+    result = _write_tool(tmp_path).invoke({"path": "src/file0.ts", "content": "rewritten"})
+    assert result == "wrote src/file0.ts"
+    assert (src / "file0.ts").read_text() == "rewritten"

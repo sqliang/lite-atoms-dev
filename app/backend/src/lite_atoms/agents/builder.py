@@ -23,6 +23,21 @@ logger = logging.getLogger(__name__)
 
 WRITABLE_PREFIXES = ("src/", "public/")
 
+# Soft budget of generated source files: new files beyond this are nudged back with
+# guidance so the model consolidates, instead of the Run dying at validation later.
+SOURCE_FILE_BUDGET = 80
+
+
+def _count_source_files(worktree: Path) -> int:
+    """Count files under the writable prefixes (template + generated source only)."""
+    return sum(
+        1
+        for prefix in WRITABLE_PREFIXES
+        if (worktree / prefix).is_dir()
+        for path in (worktree / prefix).rglob("*")
+        if path.is_file()
+    )
+
 
 def _safe_path(worktree: Path, requested: str) -> Path:
     """Resolve an agent path under the worktree; traversal outside the tree stays fatal."""
@@ -70,9 +85,16 @@ def _file_tools(
         relative = path.lstrip("/")
         if not relative.startswith(WRITABLE_PREFIXES):
             return f"rejected: only {' and '.join(WRITABLE_PREFIXES)} paths are writable; retry with an allowed path"
+        target = _safe_path(worktree, path)
+        # Soft file budget: rewrites are always allowed, but new files past the budget
+        # get guidance to consolidate instead of a post-hoc validation failure.
+        if not target.exists() and _count_source_files(worktree) >= SOURCE_FILE_BUDGET:
+            return (
+                f"rejected: the project already has {SOURCE_FILE_BUDGET} source files; "
+                "merge this into an existing file instead of creating a new one"
+            )
         if len(content.encode("utf-8")) > 200_000:
             return "rejected: file exceeds the 200 KB platform limit; split it into smaller modules"
-        target = _safe_path(worktree, path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         # Notify the platform after the file is durable so the workspace can stream it.
