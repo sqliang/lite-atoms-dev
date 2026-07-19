@@ -23,9 +23,6 @@ class Settings(BaseSettings):
     projects_volume_name: str = "infra_projects"
     build_runner_image: str = "lite-atoms-build-runner:local"
     preview_ticket_secret: str
-    # Planner output is auto-approved by default; set false to pause initial Runs for
-    # manual Contract approval (the future Plan mode).
-    planner_auto_approve: bool = True
 
 
 settings = Settings()

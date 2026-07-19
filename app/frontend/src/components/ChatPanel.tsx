@@ -19,10 +19,11 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Send, Square, Sparkles, History, ArrowDown, Home, RefreshCw, CheckCircle2, LoaderCircle, X, FileCode2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import ChatMessage, { ChatMessageData, StepItem } from './ChatMessage';
-import { ContractApproval } from '@/features/contracts/ui/ContractApproval';
+import { PlanCard } from '@/features/contracts/ui/PlanCard';
+import { ModeSelect, type RunMode } from '@/shared/ui/ModeSelect';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { collectFilePaths } from '@/features/workspace/model/project-files';
 import type { ChatMessageRecord, ProjectVersion, Run, StreamEvent } from '@/features/workspace/ui/WorkspaceScreen';
@@ -104,7 +105,7 @@ interface ChatPanelProps {
   selectedVersionId: string | null;
   onSelectVersion: (versionId: string | null) => void;
   buildDiagnostics: string | null;
-  onSend: (instruction: string, references: RunReferenceInput[]) => void;
+  onSend: (instruction: string, references: RunReferenceInput[], mode: RunMode) => void;
   onRetry: () => void;
   onCancel: () => void;
   isSending: boolean;
@@ -137,11 +138,27 @@ export default function ChatPanel({
   const [mentionRefs, setMentionRefs] = useState<string[]>([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const navigate = useNavigate();
+  const location = useLocation();
+  /**
+   * 执行模式：build 自动批准计划，plan 需人工审阅批准后生成。
+   * 初始值优先级：首页路由传入 > 本项目 localStorage 记忆 > 默认 build。
+   */
+  const [mode, setModeState] = useState<RunMode>(() => {
+    const fromRoute = (location.state as { mode?: RunMode } | null)?.mode;
+    if (fromRoute === 'build' || fromRoute === 'plan') return fromRoute;
+    const remembered = localStorage.getItem(`lite-atoms:mode:${projectId}`);
+    return remembered === 'plan' ? 'plan' : 'build';
+  });
+  /** 切换模式并记忆到本项目，作用于下一次发送 */
+  const setMode = (next: RunMode) => {
+    setModeState(next);
+    localStorage.setItem(`lite-atoms:mode:${projectId}`, next);
+  };
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const versionsMenuRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
   const { selectionReference, setSelectionReference, projectFiles } = useWorkspace();
 
   const allFilePaths = useMemo(() => collectFilePaths(projectFiles), [projectFiles]);
@@ -279,14 +296,14 @@ export default function ChatPanel({
   /** 发送用户指令：创建 update Run（附选区/@ 代码引用），后续进展由 SSE 事件驱动 */
   const handleSend = () => {
     const instruction = input.trim();
-    if (!instruction || isSending) return;
+    if (instruction.length < 10 || isSending) return;
     const references: RunReferenceInput[] = [
       ...mentionRefs.map((path) => ({ path })),
       ...(selectionReference
         ? [{ path: selectionReference.path, start_line: selectionReference.startLine, end_line: selectionReference.endLine }]
         : []),
     ];
-    onSend(instruction, references);
+    onSend(instruction, references, mode);
     setInput('');
     setMentionRefs([]);
     setSelectionReference(null);
@@ -359,9 +376,6 @@ export default function ChatPanel({
 
   return (
     <div className="flex flex-col h-full bg-background relative">
-      {/* Run 等待审批时，Build Contract 确认卡片浮动在对话区右上角 */}
-      {currentRun?.status === 'awaiting_approval' && <ContractApproval projectId={projectId} />}
-
       {/* 顶部导航栏 */}
       <div className="flex items-center justify-between px-4 h-12 border-b border-border/60 flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -450,6 +464,8 @@ export default function ChatPanel({
               defaultExpanded={isTyping && msg.id === `run-${currentRun?.id}`}
             />
           ))}
+          {/* Plan 模式：Run 暂停在待审批时，在会话流中展示完整构建计划 */}
+          {currentRun?.status === 'awaiting_approval' && <PlanCard projectId={projectId} />}
           {/* AI 正在生成的动画指示器（代码生成阶段常驻；构建阶段由下方状态条接管） */}
           {isTyping && !buildStatus && (
             <div className="flex gap-3 px-4 py-3">
@@ -596,13 +612,14 @@ export default function ChatPanel({
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="描述你的需求... 输入 @ 可引用文件"
+            placeholder="描述你的需求（至少 10 个字）... 输入 @ 可引用文件"
             rows={2}
             className="w-full resize-none bg-transparent px-4 pt-3 pb-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none overflow-y-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
             style={{ minHeight: '56px', maxHeight: '200px' }}
           />
-          {/* 工具栏 - 生成期间为终止按钮，否则为发送按钮 */}
-          <div className="flex items-center justify-end px-3 pb-2">
+          {/* 工具栏 - 模式选择器紧贴发送按钮，生成期间为终止按钮 */}
+          <div className="flex items-center justify-end gap-1.5 px-3 pb-2">
+            <ModeSelect mode={mode} onChange={setMode} disabled={isTyping} />
             {isTyping ? (
               <Button
                 onClick={onCancel}
@@ -617,7 +634,7 @@ export default function ChatPanel({
             ) : (
               <Button
                 onClick={handleSend}
-                disabled={!input.trim() || isSending || isTyping}
+                disabled={input.trim().length < 10 || isSending || isTyping}
                 size="icon"
                 className="w-8 h-8 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-30 cursor-pointer transition-all duration-200"
                 title="发送"

@@ -22,8 +22,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Sparkles, ArrowRight, Layers, Clock, ChevronRight, LogOut, User, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ModeSelect, type RunMode } from '@/shared/ui/ModeSelect';
 import { useAuth } from '@/context/AuthContext';
-import { apiRequest } from '@/shared/api/client';
+import { apiRequest, ApiError } from '@/shared/api/client';
+import { toast } from 'sonner';
 
 /**
  * 项目列表项数据结构
@@ -78,6 +80,8 @@ export default function HomePage() {
   const [input, setInput] = useState('');
   /** 控制用户菜单弹窗的显示/隐藏 */
   const [showUserMenu, setShowUserMenu] = useState(false);
+  /** 执行模式：build 自动批准计划，plan 需人工审阅批准后生成 */
+  const [mode, setMode] = useState<RunMode>('build');
   /** 项目创建中的加载状态，防止重复提交 */
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
@@ -114,17 +118,23 @@ export default function HomePage() {
    */
   const handleStartBuild = async () => {
     if (!input.trim() || !user || creating) return;
+    const trimmedInput = input.trim();
+    // 服务端要求需求描述 10~2000 字，前端提前拦截并给出明确提示
+    if (trimmedInput.length < 10) {
+      toast.error('需求描述太短了，请至少输入 10 个字，描述得越具体生成效果越好');
+      return;
+    }
     setCreating(true);
 
-    const trimmedInput = input.trim();
     try {
       const data = await apiRequest<Project>('/v1/projects', { method: 'POST', body: JSON.stringify({ prompt: trimmedInput }) });
       const run = await apiRequest<{ id: string }>(`/v1/projects/${data.id}/runs`, {
         method: 'POST',
-        body: JSON.stringify({ kind: 'initial', request_id: crypto.randomUUID(), instruction: trimmedInput }),
+        body: JSON.stringify({ kind: 'initial', request_id: crypto.randomUUID(), instruction: trimmedInput, mode }),
       });
-      navigate(`/project/${data.id}`, { state: { prompt: trimmedInput, runId: run.id } });
-    } catch {
+      navigate(`/project/${data.id}`, { state: { prompt: trimmedInput, runId: run.id, mode } });
+    } catch (error) {
+      toast.error(error instanceof ApiError ? `创建失败：${error.message}` : '创建失败，请稍后重试');
       setCreating(false);
     }
   };
@@ -256,7 +266,7 @@ export default function HomePage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="例如：帮我创建一个待办事项应用..."
+                placeholder="例如：帮我创建一个待办事项应用...（至少 10 个字，描述越具体生成效果越好）"
                 rows={4}
                 className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none leading-relaxed"
               />
@@ -264,24 +274,27 @@ export default function HomePage() {
                 <p className="text-[10px] text-muted-foreground/40">
                   按 Enter 开始构建，Shift+Enter 换行
                 </p>
-                <Button
-                  onClick={handleStartBuild}
-                  disabled={!input.trim() || creating}
-                  size="sm"
-                  className="h-8 px-4 gap-2 rounded-lg cursor-pointer transition-all duration-200 disabled:opacity-30"
-                >
-                  {creating ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      创建中...
-                    </>
-                  ) : (
-                    <>
-                      开始构建
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </>
-                  )}
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <ModeSelect mode={mode} onChange={setMode} />
+                  <Button
+                    onClick={handleStartBuild}
+                    disabled={input.trim().length < 10 || creating}
+                    size="sm"
+                    className="h-8 px-4 gap-2 rounded-lg cursor-pointer transition-all duration-200 disabled:opacity-30"
+                  >
+                    {creating ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        创建中...
+                      </>
+                    ) : (
+                      <>
+                        开始构建
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

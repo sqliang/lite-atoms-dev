@@ -10,7 +10,8 @@ services:
       - db-data:/var/lib/postgresql/data
       - ./local-db-init/00_shim.sql:/docker-entrypoint-initdb.d/00_shim.sql:ro
       - ../supabase/migrations/20260719_0001_lite_atoms.sql:/docker-entrypoint-initdb.d/01_migration.sql:ro
-      - ./local-db-init/02_local.sql:/docker-entrypoint-initdb.d/02_local.sql:ro
+      - ../supabase/migrations/20260720_0002_run_mode.sql:/docker-entrypoint-initdb.d/02_run_mode.sql:ro
+      - ./local-db-init/02_local.sql:/docker-entrypoint-initdb.d/03_local.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 3s

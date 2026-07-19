@@ -39,7 +39,7 @@ app.add_middleware(
 
 
 def run_response(row: dict) -> RunResponse:
-    return RunResponse(id=row["id"], project_id=row["project_id"], kind=row["kind"], status=row["status"], stage=row["stage"], repair_attempts=row["repair_attempts"], error_code=row["error_code"], error_message=row["error_message"])
+    return RunResponse(id=row["id"], project_id=row["project_id"], kind=row["kind"], status=row["status"], stage=row["stage"], repair_attempts=row["repair_attempts"], mode=row.get("mode", "build"), error_code=row["error_code"], error_message=row["error_message"])
 
 
 @app.get("/health")
@@ -86,7 +86,7 @@ def create_preview_ticket(project_id: UUID, user_id: CurrentUserId) -> dict[str,
 def start_run(project_id: UUID, payload: CreateRunRequest, user_id: CurrentUserId) -> RunResponse:
     try:
         references = [item.model_dump() for item in payload.references]
-        return run_response(repository.create_run(project_id, user_id, payload.kind, payload.request_id, payload.instruction, references))
+        return run_response(repository.create_run(project_id, user_id, payload.kind, payload.request_id, payload.instruction, references, payload.mode))
     except PermissionError:
         raise HTTPException(404, "Project not found")
     except ValueError as error:

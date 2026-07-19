@@ -32,6 +32,8 @@ class CreateRunRequest(BaseModel):
     request_id: UUID
     instruction: str | None = Field(default=None, max_length=4000)
     references: list[ReferenceItem] = Field(default_factory=list, max_length=5)
+    # 'build' auto-approves the planned Contract; 'plan' pauses for user review.
+    mode: Literal["build", "plan"] = "build"
 
 
 class ContractUpdateRequest(BaseModel):
@@ -53,6 +55,7 @@ class RunResponse(BaseModel):
     status: str
     stage: str | None
     repair_attempts: int
+    mode: str = "build"
     error_code: str | None = None
     error_message: str | None = None
 

@@ -103,11 +103,14 @@ def create_run(
     request_id: UUID,
     instruction: str | None,
     references: list[dict[str, Any]] | None = None,
+    mode: str = "build",
 ) -> dict[str, Any]:
     """Create one idempotent Run. The partial index prevents concurrent writers."""
     references = references or []
     if any(".." in str(item.get("path", "")).split("/") for item in references):
         raise ValueError("Reference paths may not escape the project")
+    if mode not in {"build", "plan"}:
+        raise ValueError("Run mode must be 'build' or 'plan'")
     with transaction() as connection:
         project = owned_project(connection, project_id, owner_id)
         existing = connection.execute(
@@ -123,9 +126,9 @@ def create_run(
         run_id = uuid4()
         connection.execute(
             """insert into app.agent_runs
-              (id, project_id, kind, request_id, contract_id, base_version_id, status, stage)
-              values (%s,%s,%s,%s,%s,%s,'queued',%s)""",
-            (run_id, project_id, kind, request_id, contract["id"] if contract else None, project["stable_version_id"], "planning" if kind == "initial" else "generating"),
+              (id, project_id, kind, request_id, contract_id, base_version_id, status, stage, mode)
+              values (%s,%s,%s,%s,%s,%s,'queued',%s,%s)""",
+            (run_id, project_id, kind, request_id, contract["id"] if contract else None, project["stable_version_id"], "planning" if kind == "initial" else "generating", mode),
         )
         if instruction:
             # References are part of the owner's instruction: the visible text carries a
