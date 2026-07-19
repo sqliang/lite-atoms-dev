@@ -56,3 +56,6 @@ test-results/
 pnpm-lock.yaml
 *.pyc
 __pycache__
+
+# 任务文档需要隐藏，不提交到仓库中
+docs/0-task.md
