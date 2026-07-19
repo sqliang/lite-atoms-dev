@@ -290,7 +290,7 @@ export default function CodeEditor({ content, language }: CodeEditorProps) {
                 const isCollapsed = collapsedLines.has(i);
                 const region = foldableLineMap.get(i);
                 return (
-                  <div key={i} className="leading-[1.7rem]">
+                  <div key={i} data-line={i + 1} className="leading-[1.7rem]">
                     <span dangerouslySetInnerHTML={{ __html: highlightedLines[i] || '&nbsp;' }} />
                     {isCollapsed && region && (
                       <span

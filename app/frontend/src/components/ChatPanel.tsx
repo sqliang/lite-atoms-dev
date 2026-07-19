@@ -18,12 +18,21 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Square, Sparkles, History, ArrowDown, Home, RefreshCw, CheckCircle2, LoaderCircle } from 'lucide-react';
+import { Send, Square, Sparkles, History, ArrowDown, Home, RefreshCw, CheckCircle2, LoaderCircle, X, FileCode2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import ChatMessage, { ChatMessageData, StepItem } from './ChatMessage';
 import { ContractApproval } from '@/features/contracts/ui/ContractApproval';
+import { useWorkspace } from '@/context/WorkspaceContext';
+import { collectFilePaths } from '@/features/workspace/model/project-files';
 import type { ChatMessageRecord, ProjectVersion, Run, StreamEvent } from '@/features/workspace/ui/WorkspaceScreen';
+
+/** 随指令发送的代码引用（选区引用带行区间，@ 引用仅路径） */
+export interface RunReferenceInput {
+  path: string;
+  start_line?: number;
+  end_line?: number;
+}
 
 /** SSE 事件类型到工作流步骤文案的映射（与 Worker 状态机一一对应） */
 const EVENT_STEP_LABELS: Record<string, string> = {
@@ -78,7 +87,7 @@ function runSummary(run: Run): string {
  * @property selectedVersionId - 当前查看的历史版本；null 为最新稳定版
  * @property onSelectVersion - 切换查看的版本（null 回到最新）
  * @property buildDiagnostics - 失败 Run 的构建诊断（可折叠展示）
- * @property onSend - 发送新指令（创建 update Run）
+ * @property onSend - 发送新指令（创建 update Run，可附代码引用）
  * @property onRetry - 重试失败的 Run（无契约时重新规划，有契约时重试构建）
  * @property onCancel - 请求协作式终止当前活跃 Run
  * @property isSending - 指令提交中
@@ -95,7 +104,7 @@ interface ChatPanelProps {
   selectedVersionId: string | null;
   onSelectVersion: (versionId: string | null) => void;
   buildDiagnostics: string | null;
-  onSend: (instruction: string) => void;
+  onSend: (instruction: string, references: RunReferenceInput[]) => void;
   onRetry: () => void;
   onCancel: () => void;
   isSending: boolean;
@@ -124,11 +133,24 @@ export default function ChatPanel({
   const [showVersions, setShowVersions] = useState(false);
   /** 滚动到底部按钮的显示状态 */
   const [showScrollButton, setShowScrollButton] = useState(false);
+  /** @ 引用：手动添加的文件 chips 与当前候选下拉状态 */
+  const [mentionRefs, setMentionRefs] = useState<string[]>([]);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const versionsMenuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const { selectionReference, setSelectionReference, projectFiles } = useWorkspace();
+
+  const allFilePaths = useMemo(() => collectFilePaths(projectFiles), [projectFiles]);
+  /** @ 候选文件列表：按输入片段模糊过滤 */
+  const mentionCandidates = useMemo(() => {
+    if (mentionQuery === null) return [];
+    const query = mentionQuery.toLowerCase();
+    return allFilePaths.filter((path) => path.toLowerCase().includes(query)).slice(0, 8);
+  }, [mentionQuery, allFilePaths]);
 
   /** 版本下拉菜单：点击菜单外任意位置自动收起 */
   useEffect(() => {
@@ -254,22 +276,81 @@ export default function ChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  /** 发送用户指令：创建 update Run，后续进展由 SSE 事件驱动 */
+  /** 发送用户指令：创建 update Run（附选区/@ 代码引用），后续进展由 SSE 事件驱动 */
   const handleSend = () => {
     const instruction = input.trim();
     if (!instruction || isSending) return;
-    onSend(instruction);
+    const references: RunReferenceInput[] = [
+      ...mentionRefs.map((path) => ({ path })),
+      ...(selectionReference
+        ? [{ path: selectionReference.path, start_line: selectionReference.startLine, end_line: selectionReference.endLine }]
+        : []),
+    ];
+    onSend(instruction, references);
     setInput('');
+    setMentionRefs([]);
+    setSelectionReference(null);
+    setMentionQuery(null);
     if (inputRef.current) {
       inputRef.current.style.height = 'auto';
     }
   };
 
+  /** 输入变化：检测光标前最后一个 @ 片段，驱动文件候选下拉 */
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const el = e.target;
+    setInput(el.value);
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+    const beforeCursor = el.value.slice(0, el.selectionStart ?? el.value.length);
+    const atIndex = beforeCursor.lastIndexOf('@');
+    if (atIndex >= 0 && !/[\s@]/.test(beforeCursor.slice(atIndex + 1))) {
+      setMentionQuery(beforeCursor.slice(atIndex + 1));
+      setMentionIndex(0);
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
+  /** 选中一个 @ 候选文件：移除 @片段，加入引用 chips */
+  const pickMention = (path: string) => {
+    const el = inputRef.current;
+    const cursor = el?.selectionStart ?? input.length;
+    const atIndex = input.slice(0, cursor).lastIndexOf('@');
+    if (atIndex >= 0) {
+      setInput(input.slice(0, atIndex) + input.slice(cursor));
+    }
+    setMentionRefs((previous) => (previous.includes(path) ? previous : [...previous, path]));
+    setMentionQuery(null);
+    inputRef.current?.focus();
+  };
+
   /**
    * 键盘事件处理
-   * Enter 发送消息，Shift+Enter 插入换行
+   * @ 下拉打开时：上下键选择、Enter 确认、Esc 关闭；否则 Enter 发送，Shift+Enter 换行
    */
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (mentionQuery !== null && mentionCandidates.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionIndex((index) => Math.min(index + 1, mentionCandidates.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionIndex((index) => Math.max(index - 1, 0));
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        pickMention(mentionCandidates[mentionIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        setMentionQuery(null);
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -451,21 +532,71 @@ export default function ChatPanel({
       )}
 
       {/* 底部消息输入区域 */}
-      <div className="p-3 border-t border-border/60 flex-shrink-0">
+      <div className="p-3 border-t border-border/60 flex-shrink-0 relative">
+        {/* @ 文件候选下拉 */}
+        {mentionQuery !== null && mentionCandidates.length > 0 && (
+          <div className="absolute bottom-full mb-2 left-3 right-3 bg-card border border-border rounded-lg shadow-lg z-50 py-1 max-h-56 overflow-y-auto">
+            <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wider font-medium px-3 py-1.5">
+              引用文件
+            </p>
+            {mentionCandidates.map((path, index) => (
+              <button
+                key={path}
+                className={`w-full text-left px-3 py-1.5 text-xs font-mono cursor-pointer transition-colors ${
+                  index === mentionIndex ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-secondary/60'
+                }`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pickMention(path);
+                }}
+              >
+                {path}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="rounded-xl border border-border/80 bg-secondary/30 focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200">
-          {/* 多行文本输入框，支持自动高度调整 */}
+          {/* 代码引用 chips：编辑器选区（带行号）与 @ 引用 */}
+          {(selectionReference || mentionRefs.length > 0) && (
+            <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+              {selectionReference && (
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 border border-primary/25 px-2 py-1 text-[11px] text-foreground/90">
+                  <FileCode2 className="w-3 h-3 text-primary" />
+                  {selectionReference.path.split('/').pop()} · L{selectionReference.startLine}-{selectionReference.endLine}
+                  <button
+                    className="text-muted-foreground hover:text-foreground cursor-pointer"
+                    onClick={() => setSelectionReference(null)}
+                    title="移除引用"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {mentionRefs.map((path) => (
+                <span
+                  key={path}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-secondary border border-border/60 px-2 py-1 text-[11px] text-foreground/90"
+                >
+                  <FileCode2 className="w-3 h-3 text-muted-foreground" />
+                  {path.split('/').pop()}
+                  <button
+                    className="text-muted-foreground hover:text-foreground cursor-pointer"
+                    onClick={() => setMentionRefs((previous) => previous.filter((candidate) => candidate !== path))}
+                    title="移除引用"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {/* 多行文本输入框，支持自动高度调整；输入 @ 可引用项目文件 */}
           <textarea
             ref={inputRef}
             value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              // 自动调整 textarea 高度以适应内容
-              const el = e.target;
-              el.style.height = 'auto';
-              el.style.height = Math.min(el.scrollHeight, 200) + 'px';
-            }}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="描述你的需求..."
+            placeholder="描述你的需求... 输入 @ 可引用文件"
             rows={2}
             className="w-full resize-none bg-transparent px-4 pt-3 pb-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none overflow-y-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
             style={{ minHeight: '56px', maxHeight: '200px' }}

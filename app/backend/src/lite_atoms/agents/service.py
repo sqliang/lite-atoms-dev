@@ -189,6 +189,34 @@ def _file_tools(
     return [read_source, list_sources, write_source]
 
 
+def _build_reference_excerpts(worktree: Path, references: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Resolve user-pinned references into bounded excerpts from the worktree.
+
+    Missing or disallowed files are skipped silently: a stale reference must never
+    fail the Run, and the allowlist keeps reads inside generated source.
+    """
+    excerpts: list[dict[str, Any]] = []
+    for item in references[:5]:
+        path = str(item.get("path", "")).lstrip("/")
+        if not path.startswith(WRITABLE_PREFIXES):
+            continue
+        try:
+            content = _safe_path(worktree, path).read_text(encoding="utf-8")
+        except (AgentOutputError, OSError):
+            continue
+        lines = content.splitlines()
+        start = item.get("start_line")
+        end = item.get("end_line") or start
+        if start:
+            start = max(1, min(int(start), len(lines)))
+            end = max(start, min(int(end or start), len(lines)))
+            excerpt = "\n".join(f"{number}: {lines[number - 1]}" for number in range(start, end + 1))
+        else:
+            excerpt = content[:30_000]
+        excerpts.append({"path": path, "start_line": start, "end_line": end, "excerpt": excerpt})
+    return excerpts
+
+
 def generate_source(
     worktree: Path,
     contract: dict[str, Any],
@@ -196,6 +224,7 @@ def generate_source(
     on_file_written: Callable[[str, str], None] | None = None,
     should_abort: Callable[[], bool] | None = None,
     instruction: str | None = None,
+    references: list[dict[str, Any]] | None = None,
 ) -> str:
     """Run Builder or Repair with a capability-minimized Deep Agent.
 
@@ -216,6 +245,7 @@ You may only create or modify files under src/ and public/; every other path is 
 Implement the approved Build Contract in the existing React TypeScript application. {repair_note}
 Style every component with Tailwind CSS v4 utility classes in className; the template already
 wires Tailwind through src/styles.css, so do not create additional CSS files or CSS imports.
+When the input includes references, treat them as user-pinned code context and prioritize them.
 When done, explain briefly which source files you changed."""
     model = _model()
     agent = create_deep_agent(model=model, tools=_file_tools(worktree, on_file_written, should_abort), subagents=[], system_prompt=system_prompt)
@@ -243,6 +273,10 @@ When done, explain briefly which source files you changed."""
                 "Modify the existing source minimally to satisfy the instruction; "
                 "keep unrelated features and files intact."
             )
+        excerpts = _build_reference_excerpts(worktree, references or [])
+        if excerpts:
+            # User-pinned excerpts give the agent precise local context for the edit.
+            payload["references"] = excerpts
         result = agent.invoke({"messages": [{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]})
         return str(result["messages"][-1].content)[:4_000]
     finally:

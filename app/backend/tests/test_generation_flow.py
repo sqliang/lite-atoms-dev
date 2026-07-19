@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from lite_atoms.agents.service import AgentAborted, _file_tools, generate_project_title
+from lite_atoms.agents.service import AgentAborted, _build_reference_excerpts, _file_tools, generate_project_title
 from lite_atoms.worker.main import RunCancelled, _raise_if_cancel_requested
 
 CALLBACK_CALLS: list[tuple[str, str]] = []
@@ -96,3 +96,24 @@ def test_generate_project_title_rejects_empty_output() -> None:
     ):
         model.return_value.invoke.return_value = response
         generate_project_title("帮我创建一个待办事项应用")
+
+
+def test_reference_excerpts_line_range(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "App.tsx").write_text("l1\nl2\nl3\nl4\nl5")
+    excerpts = _build_reference_excerpts(tmp_path, [{"path": "src/App.tsx", "start_line": 2, "end_line": 4}])
+    assert excerpts == [{"path": "src/App.tsx", "start_line": 2, "end_line": 4, "excerpt": "2: l2\n3: l3\n4: l4"}]
+
+
+def test_reference_excerpts_full_file_and_skips(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "App.tsx").write_text("hello")
+    excerpts = _build_reference_excerpts(
+        tmp_path,
+        [
+            {"path": "src/App.tsx"},  # no line range → whole file
+            {"path": "package.json"},  # outside allowlist → skipped
+            {"path": "src/Missing.tsx"},  # missing → skipped
+        ],
+    )
+    assert excerpts == [{"path": "src/App.tsx", "start_line": None, "end_line": None, "excerpt": "hello"}]
