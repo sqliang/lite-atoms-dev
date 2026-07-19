@@ -14,7 +14,7 @@ FORBIDDEN_IMPORTS = ("node:", "child_process", "fs", "net", "http", "https", "wo
 # from the workbench by Preview Gateway. It may therefore support ordinary offline UI
 # state. Dynamic execution and platform-cookie access remain prohibited.
 FORBIDDEN_APIS = ("eval(", "new Function", "import(", "document.cookie")
-MAX_FILES = 80
+MAX_FILES = 200
 MAX_FILE_BYTES = 200_000
 
 
