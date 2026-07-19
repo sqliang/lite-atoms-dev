@@ -1,3 +1,23 @@
+/**
+ * @file FileTree.tsx
+ * @description 文件资源管理器组件
+ *
+ * 该组件实现了工作台右侧编辑器面板中的文件树导航，功能包括：
+ * - 递归渲染项目文件/文件夹树形结构
+ * - 文件搜索过滤（模糊匹配文件路径）
+ * - 文件夹展开/折叠
+ * - 点击文件在编辑器中打开
+ * - 面板折叠/展开切换
+ * - 项目整体下载（ZIP 格式）
+ *
+ * 文件图标根据扩展名动态显示不同颜色标识：
+ * - .ts/.tsx → 蓝色 TS
+ * - .css → 紫色 CS
+ * - .json → 黄色 {}
+ * - .md → 灰色 MD
+ * - .svg → 橙色 SV
+ */
+
 import { useState, useMemo } from 'react';
 import { ChevronRight, ChevronDown, File, Folder, FolderOpen, FolderDown, Search, PanelLeftClose, PanelLeft } from 'lucide-react';
 import { FileNode, useWorkspace } from '@/context/WorkspaceContext';
@@ -5,17 +25,30 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 interface FileTreeProps {
+  /** 触发项目下载的回调函数 */
   onDownloadProject: () => void;
+  /** 面板是否处于折叠状态 */
   isCollapsed: boolean;
+  /** 切换面板折叠/展开的回调 */
   onToggleCollapse: () => void;
 }
 
 interface FileTreeNodeProps {
   node: FileNode;
+  /** 当前节点的嵌套深度，用于计算缩进 */
   depth: number;
+  /** 当前搜索关键词，用于高亮和过滤 */
   searchQuery: string;
 }
 
+/**
+ * 将嵌套的文件树结构扁平化为一维数组
+ * 用于搜索功能，将所有文件及其完整路径提取出来
+ *
+ * @param nodes - 文件树节点数组
+ * @param prefix - 当前路径前缀（递归累积）
+ * @returns 扁平化的文件节点数组，每项包含节点和完整路径
+ */
 function flattenFiles(nodes: FileNode[], prefix = ''): { node: FileNode; path: string }[] {
   const result: { node: FileNode; path: string }[] = [];
   for (const node of nodes) {
@@ -30,6 +63,14 @@ function flattenFiles(nodes: FileNode[], prefix = ''): { node: FileNode; path: s
   return result;
 }
 
+/**
+ * 递归检查节点或其子节点是否匹配搜索关键词
+ * 用于决定文件树节点是否应该显示
+ *
+ * @param node - 待检查的文件树节点
+ * @param query - 搜索关键词（小写）
+ * @returns 是否匹配
+ */
 function nodeMatchesSearch(node: FileNode, query: string): boolean {
   const lowerQuery = query.toLowerCase();
   if (node.name.toLowerCase().includes(lowerQuery)) return true;
@@ -39,17 +80,27 @@ function nodeMatchesSearch(node: FileNode, query: string): boolean {
   return false;
 }
 
+/**
+ * 文件树单节点组件
+ * 递归渲染文件/文件夹节点，支持展开折叠和点击打开
+ */
 function FileTreeNode({ node, depth, searchQuery }: FileTreeNodeProps) {
+  /** 默认展开前两层目录 */
   const [isOpen, setIsOpen] = useState(depth < 2);
   const { openFileFromTree, activeTabId } = useWorkspace();
 
   const isFolder = node.type === 'folder';
+  /** 当前节点是否为编辑器中激活的文件 */
   const isActive = node.id === activeTabId;
 
-  // If searching, auto-expand folders that contain matches
+  // 搜索模式下的显示/展开逻辑
   const shouldShow = !searchQuery || nodeMatchesSearch(node, searchQuery);
   const shouldAutoExpand = searchQuery && isFolder && shouldShow;
 
+  /**
+   * 根据文件扩展名返回对应的彩色图标
+   * 使用 monospace 字体的缩写标识不同文件类型
+   */
   const getFileIcon = (name: string) => {
     if (name.endsWith('.tsx') || name.endsWith('.ts')) {
       return <span className="text-blue-400 text-[10px] font-bold font-mono">TS</span>;
@@ -75,6 +126,7 @@ function FileTreeNode({ node, depth, searchQuery }: FileTreeNodeProps) {
     return <File className="w-3.5 h-3.5 text-muted-foreground" />;
   };
 
+  /** 点击处理：文件夹切换展开，文件打开到编辑器 */
   const handleClick = () => {
     if (isFolder) {
       setIsOpen(!isOpen);
@@ -126,6 +178,7 @@ function FileTreeNode({ node, depth, searchQuery }: FileTreeNodeProps) {
         <span className="text-[12px] truncate ml-0.5">{node.name}</span>
       </div>
 
+      {/* 递归渲染子节点 */}
       {isFolder && expanded && node.children && (
         <div>
           {node.children.map((child) => (
@@ -137,11 +190,19 @@ function FileTreeNode({ node, depth, searchQuery }: FileTreeNodeProps) {
   );
 }
 
+/**
+ * 文件资源管理器主组件
+ * 包含搜索栏、文件树、下载按钮，支持面板折叠
+ */
 export default function FileTree({ onDownloadProject, isCollapsed, onToggleCollapse }: FileTreeProps) {
   const { projectFiles, openFileFromTree } = useWorkspace();
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
 
+  /**
+   * 搜索结果计算（使用 useMemo 优化性能）
+   * 将文件树扁平化后按路径模糊匹配过滤
+   */
   const searchResults = useMemo(() => {
     if (!searchQuery) return [];
     const allFiles = flattenFiles(projectFiles);
@@ -150,6 +211,7 @@ export default function FileTree({ onDownloadProject, isCollapsed, onToggleColla
     );
   }, [searchQuery, projectFiles]);
 
+  // 折叠状态：只显示展开按钮
   if (isCollapsed) {
     return (
       <div className="h-full flex flex-col items-center bg-background border-r border-border py-2">
@@ -168,7 +230,7 @@ export default function FileTree({ onDownloadProject, isCollapsed, onToggleColla
 
   return (
     <div className="h-full flex flex-col bg-background border-r border-border">
-      {/* Header */}
+      {/* 顶部标题栏 */}
       <div className="flex items-center justify-between px-3 h-9 border-b border-border flex-shrink-0">
         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
           Explorer
@@ -195,7 +257,7 @@ export default function FileTree({ onDownloadProject, isCollapsed, onToggleColla
         </div>
       </div>
 
-      {/* Search input */}
+      {/* 搜索输入框（可切换显示） */}
       {showSearch && (
         <div className="px-2 py-1.5 border-b border-border/50">
           <Input
@@ -209,9 +271,10 @@ export default function FileTree({ onDownloadProject, isCollapsed, onToggleColla
         </div>
       )}
 
-      {/* Search results or file tree */}
+      {/* 文件列表区域 */}
       <div className="flex-1 overflow-y-auto py-1">
         {searchQuery && showSearch ? (
+          // 搜索结果模式：显示匹配的文件列表
           <div className="px-1">
             {searchResults.length === 0 ? (
               <div className="px-3 py-4 text-center">
@@ -231,13 +294,14 @@ export default function FileTree({ onDownloadProject, isCollapsed, onToggleColla
             )}
           </div>
         ) : (
+          // 正常模式：渲染完整文件树
           projectFiles.map((node) => (
             <FileTreeNode key={node.id} node={node} depth={0} searchQuery="" />
           ))
         )}
       </div>
 
-      {/* Download project button */}
+      {/* 底部下载按钮 */}
       <div className="p-2 border-t border-border flex-shrink-0">
         <Button
           variant="outline"

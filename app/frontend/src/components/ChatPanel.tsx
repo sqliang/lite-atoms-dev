@@ -1,21 +1,52 @@
+/**
+ * @file ChatPanel.tsx
+ * @description AI 对话面板组件
+ *
+ * 该组件实现了工作台左侧的 AI 聊天界面，包含：
+ * - 顶部导航栏：返回首页按钮、项目名称、版本历史
+ * - 消息列表区域：展示用户消息和 AI 回复（含工作流步骤）
+ * - 底部输入区域：支持多行输入、自动高度调整、快捷键发送
+ *
+ * 当前阶段为 Demo 模式，消息数据为模拟数据。
+ * 后续将接入真实 AI 后端，通过 WebSocket/SSE 实现流式响应。
+ *
+ * 核心交互：
+ * - Enter 发送消息，Shift+Enter 换行
+ * - 滚动到底部按钮（当用户向上滚动时显示）
+ * - 版本历史下拉菜单
+ */
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Sparkles, History, ArrowDown, Home } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import ChatMessage, { ChatMessageData, StepItem } from './ChatMessage';
 
+/**
+ * 版本记录数据结构
+ * 每次 AI 完成一轮代码生成后会产生一个新版本
+ */
 interface Version {
   id: string;
   label: string;
   timestamp: Date;
 }
 
+/** Demo 版本历史数据 */
 const DEMO_VERSIONS: Version[] = [
   { id: 'v3', label: '版本 3', timestamp: new Date(Date.now() - 60000) },
   { id: 'v2', label: '版本 2', timestamp: new Date(Date.now() - 300000) },
   { id: 'v1', label: '版本 1', timestamp: new Date(Date.now() - 600000) },
 ];
 
+/**
+ * Demo 消息数据
+ * 模拟用户与 AI 的对话历史，展示各种消息类型：
+ * - 纯文本用户消息
+ * - 带工作流步骤的 AI 回复
+ * - 带代码附件的 AI 回复
+ * - 带图片附件的 AI 回复
+ */
 const DEMO_MESSAGES: ChatMessageData[] = [
   {
     id: '1',
@@ -137,22 +168,29 @@ export function ChartWidget({ title, data }: ChartWidgetProps) {
 export default function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessageData[]>(DEMO_MESSAGES);
   const [input, setInput] = useState('');
+  /** AI 正在生成回复的状态 */
   const [isTyping, setIsTyping] = useState(false);
+  /** 版本历史下拉菜单的显示状态 */
   const [showVersions, setShowVersions] = useState(false);
+  /** 滚动到底部按钮的显示状态 */
   const [showScrollButton, setShowScrollButton] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
 
-  // TODO: Get project name from server based on session ID
+  // TODO: 从服务端根据 sessionId 获取项目名称
   const projectName = 'Dashboard App';
 
+  /** 新消息到达时自动滚动到底部 */
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Detect scroll position to show/hide scroll-to-bottom button
+  /**
+   * 监听消息列表滚动位置
+   * 当用户向上滚动超过 80px 时显示"滚动到底部"按钮
+   */
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -161,13 +199,20 @@ export default function ChatPanel() {
     setShowScrollButton(!isNearBottom);
   }, []);
 
+  /** 平滑滚动到消息列表底部 */
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  /**
+   * 发送用户消息
+   * 当前为 Demo 模式，模拟 AI 延迟 1.5 秒后回复
+   * 后续将替换为真实 API 调用
+   */
   const handleSend = () => {
     if (!input.trim()) return;
 
+    // 构造用户消息对象
     const userMessage: ChatMessageData = {
       id: Date.now().toString(),
       role: 'user',
@@ -179,7 +224,7 @@ export default function ChatPanel() {
     setInput('');
     setIsTyping(true);
 
-    // Simulate AI response
+    // 模拟 AI 响应（Demo 模式）
     setTimeout(() => {
       const aiMessage: ChatMessageData = {
         id: (Date.now() + 1).toString(),
@@ -215,6 +260,10 @@ export default function ChatPanel() {
     }, 1500);
   };
 
+  /**
+   * 键盘事件处理
+   * Enter 发送消息，Shift+Enter 插入换行
+   */
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -224,9 +273,10 @@ export default function ChatPanel() {
 
   return (
     <div className="flex flex-col h-full bg-background relative">
-      {/* Header */}
+      {/* 顶部导航栏 */}
       <div className="flex items-center justify-between px-4 h-12 border-b border-border/60 flex-shrink-0">
         <div className="flex items-center gap-2">
+          {/* 返回首页按钮 */}
           <Button
             variant="ghost"
             size="icon"
@@ -239,9 +289,9 @@ export default function ChatPanel() {
           <div className="w-6 h-6 rounded-md bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
             <Sparkles className="w-3.5 h-3.5 text-primary-foreground" />
           </div>
-          {/* TODO: Project name from server */}
           <span className="text-sm font-semibold text-foreground">{projectName}</span>
         </div>
+        {/* 版本历史按钮 */}
         <div className="relative">
           <Button
             variant="ghost"
@@ -253,7 +303,7 @@ export default function ChatPanel() {
             <History className="w-4 h-4" />
           </Button>
 
-          {/* Version dropdown */}
+          {/* 版本历史下拉菜单 */}
           {showVersions && (
             <div className="absolute right-0 top-9 w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1 animate-in fade-in slide-in-from-top-1 duration-200">
               <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wider font-medium px-3 py-1.5">
@@ -276,7 +326,7 @@ export default function ChatPanel() {
         </div>
       </div>
 
-      {/* Messages */}
+      {/* 消息列表区域 */}
       <div
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto relative"
@@ -286,6 +336,7 @@ export default function ChatPanel() {
           {messages.map((msg) => (
             <ChatMessage key={msg.id} message={msg} />
           ))}
+          {/* AI 正在输入的动画指示器 */}
           {isTyping && (
             <div className="flex gap-3 px-4 py-3">
               <div className="flex-shrink-0 w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
@@ -302,7 +353,7 @@ export default function ChatPanel() {
         </div>
       </div>
 
-      {/* Scroll to bottom button */}
+      {/* 滚动到底部浮动按钮 */}
       {showScrollButton && (
         <div className="absolute bottom-[120px] left-1/2 -translate-x-1/2 z-40">
           <Button
@@ -316,16 +367,16 @@ export default function ChatPanel() {
         </div>
       )}
 
-      {/* Input */}
+      {/* 底部消息输入区域 */}
       <div className="p-3 border-t border-border/60 flex-shrink-0">
         <div className="rounded-xl border border-border/80 bg-secondary/30 focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200">
-          {/* Textarea area */}
+          {/* 多行文本输入框，支持自动高度调整 */}
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => {
               setInput(e.target.value);
-              // Auto-resize textarea
+              // 自动调整 textarea 高度以适应内容
               const el = e.target;
               el.style.height = 'auto';
               el.style.height = Math.min(el.scrollHeight, 200) + 'px';
@@ -336,7 +387,7 @@ export default function ChatPanel() {
             className="w-full resize-none bg-transparent px-4 pt-3 pb-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none overflow-y-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
             style={{ minHeight: '56px', maxHeight: '200px' }}
           />
-          {/* Toolbar row - send button and future controls */}
+          {/* 工具栏 - 发送按钮 */}
           <div className="flex items-center justify-end px-3 pb-2">
             <Button
               onClick={handleSend}

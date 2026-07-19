@@ -1,7 +1,39 @@
+/**
+ * @file WorkspaceContext.tsx
+ * @description 工作区状态管理上下文
+ *
+ * 该模块管理编辑器面板的全局状态，包括：
+ * - 标签页系统：打开、关闭、切换编辑器标签
+ * - 项目文件树：维护项目的文件/文件夹结构数据
+ * - 文件操作：从文件树或附件打开文件到编辑器
+ *
+ * 核心数据结构：
+ * - WorkspaceTab: 编辑器中的一个标签页（代码/图片/文档）
+ * - FileNode: 文件树中的一个节点（文件或文件夹，递归结构）
+ *
+ * 当前阶段使用 Demo 数据模拟项目文件树，
+ * 后续将从服务端获取真实的项目文件结构。
+ */
+
 import React, { createContext, useContext, useState, useCallback } from 'react';
 
+/**
+ * 标签页内容类型
+ * - code: 代码文件，使用语法高亮渲染
+ * - image: 图片文件，使用图片查看器渲染
+ * - document: 文档文件（Markdown 等），使用文档查看器渲染
+ */
 export type TabType = 'code' | 'image' | 'document';
 
+/**
+ * 编辑器标签页数据结构
+ * @property id - 标签页唯一标识（通常对应文件节点 ID）
+ * @property title - 标签页显示名称（文件名）
+ * @property type - 内容类型，决定使用哪种编辑器/查看器
+ * @property content - 文件内容（代码文本或图片 URL）
+ * @property language - 编程语言标识（用于语法高亮）
+ * @property isActive - 是否为当前激活的标签页
+ */
 export interface WorkspaceTab {
   id: string;
   title: string;
@@ -11,6 +43,16 @@ export interface WorkspaceTab {
   isActive: boolean;
 }
 
+/**
+ * 文件树节点数据结构（递归）
+ * @property id - 节点唯一标识
+ * @property name - 文件/文件夹名称
+ * @property type - 节点类型：file（文件）或 folder（文件夹）
+ * @property children - 子节点数组（仅文件夹有）
+ * @property fileType - 文件的内容类型（仅文件有）
+ * @property language - 编程语言标识（仅代码文件有）
+ * @property content - 文件内容（仅文件有）
+ */
 export interface FileNode {
   id: string;
   name: string;
@@ -21,20 +63,40 @@ export interface FileNode {
   content?: string;
 }
 
+/**
+ * 工作区上下文类型定义
+ * 提供标签页管理和文件操作的完整 API
+ */
 interface WorkspaceContextType {
+  /** 当前所有打开的标签页列表 */
   tabs: WorkspaceTab[];
+  /** 当前激活标签页的 ID */
   activeTabId: string | null;
+  /** 项目文件树数据 */
   projectFiles: FileNode[];
+  /** 打开新标签页（如已存在则激活） */
   openTab: (tab: Omit<WorkspaceTab, 'isActive'>) => void;
+  /** 关闭指定标签页 */
   closeTab: (id: string) => void;
+  /** 关闭所有标签页 */
   closeAllTabs: () => void;
+  /** 切换到指定标签页 */
   setActiveTab: (id: string) => void;
+  /** 从文件树节点打开文件 */
   openFileFromTree: (file: FileNode) => void;
+  /** 按文件名在文件树中搜索并打开（返回是否找到） */
   findAndOpenFileByName: (fileName: string) => boolean;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
+/**
+ * Demo 项目文件树数据
+ * 模拟一个 React + TypeScript 仪表盘项目的文件结构
+ * 包含组件、页面、工具库、配置文件等
+ *
+ * 后续将替换为从服务端获取的真实项目文件数据
+ */
 const DEMO_PROJECT_FILES: FileNode[] = [
   {
     id: 'root-src',
@@ -538,17 +600,31 @@ pnpm build
   },
 ];
 
+/**
+ * 工作区状态提供者组件
+ * 管理编辑器标签页的打开、关闭、切换等操作
+ */
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
+  /** 当前打开的所有标签页 */
   const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
+  /** 当前激活标签页的 ID */
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  /** 项目文件树数据（当前为 Demo 数据） */
   const [projectFiles] = useState<FileNode[]>(DEMO_PROJECT_FILES);
 
+  /**
+   * 打开标签页
+   * - 如果标签页已存在：激活该标签页
+   * - 如果标签页不存在：创建新标签页并激活
+   */
   const openTab = useCallback((tab: Omit<WorkspaceTab, 'isActive'>) => {
     setTabs((prev) => {
       const existing = prev.find((t) => t.id === tab.id);
       if (existing) {
+        // 标签页已存在，仅切换激活状态
         return prev.map((t) => ({ ...t, isActive: t.id === tab.id }));
       }
+      // 创建新标签页，取消其他标签页的激活状态
       return [
         ...prev.map((t) => ({ ...t, isActive: false })),
         { ...tab, isActive: true },
@@ -557,10 +633,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setActiveTabId(tab.id);
   }, []);
 
+  /**
+   * 关闭标签页
+   * 关闭后自动激活最后一个剩余标签页
+   */
   const closeTab = useCallback((id: string) => {
     setTabs((prev) => {
       const filtered = prev.filter((t) => t.id !== id);
       if (filtered.length > 0) {
+        // 激活最后一个标签页
         const lastTab = filtered[filtered.length - 1];
         lastTab.isActive = true;
         setActiveTabId(lastTab.id);
@@ -571,16 +652,22 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  /** 切换到指定标签页 */
   const setActiveTab = useCallback((id: string) => {
     setTabs((prev) => prev.map((t) => ({ ...t, isActive: t.id === id })));
     setActiveTabId(id);
   }, []);
 
+  /** 关闭所有标签页 */
   const closeAllTabs = useCallback(() => {
     setTabs([]);
     setActiveTabId(null);
   }, []);
 
+  /**
+   * 从文件树节点打开文件
+   * 忽略文件夹和无内容的节点
+   */
   const openFileFromTree = useCallback((file: FileNode) => {
     if (file.type === 'folder' || !file.content) return;
     openTab({
@@ -593,8 +680,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [openTab]);
 
   /**
-   * Search the project file tree recursively by filename and open the file if found.
-   * Returns true if file was found and opened, false otherwise.
+   * 按文件名在项目文件树中递归搜索并打开
+   *
+   * 搜索策略：深度优先遍历整个文件树，匹配文件名（精确匹配）
+   * 找到后立即在编辑器中打开该文件
+   *
+   * @param fileName - 要搜索的文件名（如 "App.tsx"）
+   * @returns 是否找到并打开了文件
    */
   const findAndOpenFileByName = useCallback((fileName: string): boolean => {
     const searchTree = (nodes: FileNode[]): FileNode | null => {
@@ -631,6 +723,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * 工作区状态 Hook
+ * 在组件中使用此 hook 访问标签页管理和文件操作方法
+ *
+ * @example
+ * const { openTab, tabs, activeTabId } = useWorkspace();
+ *
+ * @throws 如果在 WorkspaceProvider 外部使用会抛出错误
+ */
 export function useWorkspace() {
   const context = useContext(WorkspaceContext);
   if (!context) {
