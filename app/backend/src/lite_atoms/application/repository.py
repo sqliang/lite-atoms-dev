@@ -176,6 +176,44 @@ def get_run_instruction(run_id: UUID) -> str | None:
         return row["visible_content"] if row else None
 
 
+def list_versions(project_id: UUID, owner_id: str) -> list[dict[str, Any]]:
+    """List promoted versions newest first, with stability and preview availability flags."""
+    with transaction() as connection:
+        owned_project(connection, project_id, owner_id)
+        return connection.execute(
+            """select v.id, v.commit_sha, v.message, v.origin_kind, v.created_at,
+                 (p.stable_version_id = v.id) as is_stable,
+                 exists(select 1 from app.preview_artifacts a where a.build_id = v.build_id and a.state='ready') as has_artifact
+               from app.project_versions v join app.projects p on p.id = v.project_id
+               where v.project_id=%s order by v.created_at desc""",
+            (project_id,),
+        ).fetchall()
+
+
+def get_version(project_id: UUID, version_id: UUID, owner_id: str) -> dict[str, Any]:
+    """Read one version row after an explicit owner check."""
+    with transaction() as connection:
+        owned_project(connection, project_id, owner_id)
+        row = connection.execute(
+            "select * from app.project_versions where id=%s and project_id=%s", (version_id, project_id)
+        ).fetchone()
+        if not row:
+            raise PermissionError("Version not found")
+        return row
+
+
+def artifact_id_for_version(project_id: UUID, version_id: UUID, owner_id: str) -> UUID:
+    """Resolve the ready preview artifact built for one version, if one exists."""
+    version = get_version(project_id, version_id, owner_id)
+    with transaction() as connection:
+        artifact = connection.execute(
+            "select id from app.preview_artifacts where build_id=%s and state='ready'", (version["build_id"],)
+        ).fetchone()
+    if not artifact:
+        raise ValueError("No preview artifact exists for this version")
+    return artifact["id"]
+
+
 def list_messages(project_id: UUID, owner_id: str) -> list[dict[str, Any]]:
     """List the conversation visible to the owner, oldest first."""
     with transaction() as connection:

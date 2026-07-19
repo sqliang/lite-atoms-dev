@@ -75,6 +75,8 @@ interface WorkspaceContextType {
   projectId: string;
   /** 当前稳定版本 ID；为 null 时预览与文件均不可用 */
   stableVersionId: string | null;
+  /** 版本切换器选中的历史版本 ID；为 null 表示查看最新稳定版 */
+  selectedVersionId: string | null;
   /** 活跃 Run 的当前阶段；为 null 表示没有正在进行的生成 */
   activeRunStage: string | null;
   /** 当前所有打开的标签页列表 */
@@ -108,6 +110,7 @@ interface WorkspaceProviderProps {
   children: React.ReactNode;
   projectId: string;
   stableVersionId: string | null;
+  selectedVersionId: string | null;
   activeRunStage: string | null;
   projectFiles: FileNode[];
   /** 生成中已写入的草稿文件（path → 内容），用于流式渲染 */
@@ -119,7 +122,7 @@ interface WorkspaceProviderProps {
  * 工作区状态提供者组件
  * 管理编辑器标签页的打开、关闭、切换等操作
  */
-export function WorkspaceProvider({ children, projectId, stableVersionId, activeRunStage, projectFiles, draftFiles, loadFileContent }: WorkspaceProviderProps) {
+export function WorkspaceProvider({ children, projectId, stableVersionId, selectedVersionId, activeRunStage, projectFiles, draftFiles, loadFileContent }: WorkspaceProviderProps) {
   /** 当前打开的所有标签页 */
   const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
   /** 当前激活标签页的 ID */
@@ -135,6 +138,20 @@ export function WorkspaceProvider({ children, projectId, stableVersionId, active
       ),
     );
   }, [draftFiles]);
+
+  // 版本切换后，已打开的项目文件标签仍持有旧版本的内容快照，需要按当前查看的
+  // 版本重新拉取。判断依据是标签 id 本身（树内文件的 id 即仓库路径），而不是
+  // 文件树——切换瞬间 files 查询换 key 后数据尚未就绪，树是空的，会漏刷新。
+  // 依赖里故意不放 tabs：updateTabContent 只改内容、不改变哪些文件处于打开状态。
+  useEffect(() => {
+    for (const tab of tabs) {
+      if (!tab.id.includes('/')) continue;
+      loadFileContent(tab.id)
+        .then((content) => updateTabContent(tab.id, content))
+        .catch(() => updateTabContent(tab.id, '// 该版本不存在此文件'));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVersionId]);
 
   /**
    * 打开标签页
@@ -259,7 +276,7 @@ export function WorkspaceProvider({ children, projectId, stableVersionId, active
   }, [projectFiles, openFileFromTree]);
 
   return (
-    <WorkspaceContext.Provider value={{ projectId, stableVersionId, activeRunStage, tabs, activeTabId, projectFiles, loadFileContent, openTab, closeTab, closeAllTabs, setActiveTab, updateTabContent, openFileFromTree, findAndOpenFileByName }}>
+    <WorkspaceContext.Provider value={{ projectId, stableVersionId, selectedVersionId, activeRunStage, tabs, activeTabId, projectFiles, loadFileContent, openTab, closeTab, closeAllTabs, setActiveTab, updateTabContent, openFileFromTree, findAndOpenFileByName }}>
       {children}
     </WorkspaceContext.Provider>
   );

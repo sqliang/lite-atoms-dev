@@ -18,8 +18,9 @@ from lite_atoms.api.schemas import (
     PreviewTicketResponse,
     ProjectResponse,
     RunResponse,
+    VersionResponse,
 )
-from lite_atoms.application import repository
+from lite_atoms.application import repository, version_files
 from lite_atoms.security.auth import CurrentUserId
 from lite_atoms.security.preview_ticket import issue_preview_ticket
 from lite_atoms.settings import settings
@@ -89,6 +90,52 @@ def start_run(project_id: UUID, payload: CreateRunRequest, user_id: CurrentUserI
         raise HTTPException(404, "Project not found")
     except ValueError as error:
         raise HTTPException(409, str(error))
+
+
+@app.get("/v1/projects/{project_id}/versions", response_model=list[VersionResponse])
+def get_versions(project_id: UUID, user_id: CurrentUserId) -> list[dict]:
+    """List promoted versions for the version switcher; newest first."""
+    try:
+        return repository.list_versions(project_id, user_id)
+    except PermissionError:
+        raise HTTPException(404, "Project not found")
+
+
+@app.get("/v1/projects/{project_id}/versions/{version_id}/files", response_model=list[str])
+def get_version_files(project_id: UUID, version_id: UUID, user_id: CurrentUserId) -> list[str]:
+    """List tracked files at one historical commit, read from the Git object store."""
+    try:
+        version = repository.get_version(project_id, version_id, user_id)
+        return version_files.list_files(project_id, version["commit_sha"])
+    except PermissionError:
+        raise HTTPException(404, "Version not found")
+    except version_files.VersionFilesError as error:
+        raise HTTPException(404, str(error))
+
+
+@app.get("/v1/projects/{project_id}/versions/{version_id}/files/{path:path}", response_model=ProjectFileResponse)
+def get_version_file(project_id: UUID, version_id: UUID, path: str, user_id: CurrentUserId) -> dict[str, str]:
+    """Read one bounded file at one historical commit."""
+    try:
+        version = repository.get_version(project_id, version_id, user_id)
+        return {"path": path, "content": version_files.read_file(project_id, version["commit_sha"], path)}
+    except PermissionError:
+        raise HTTPException(404, "Version not found")
+    except version_files.VersionFilesError as error:
+        raise HTTPException(404, str(error))
+
+
+@app.get("/v1/projects/{project_id}/versions/{version_id}/preview-ticket", response_model=PreviewTicketResponse)
+def create_version_preview_ticket(project_id: UUID, version_id: UUID, user_id: CurrentUserId) -> dict[str, str]:
+    """Authorize preview of the artifact built for one historical version."""
+    try:
+        artifact_id = repository.artifact_id_for_version(project_id, version_id, user_id)
+        ticket, expires_at = issue_preview_ticket(artifact_id)
+        return {"bootstrap_url": f"{settings.preview_origin}/session?ticket={ticket}", "expires_at": expires_at.isoformat()}
+    except PermissionError:
+        raise HTTPException(404, "Version not found")
+    except ValueError:
+        raise HTTPException(404, "No preview artifact exists for this version")
 
 
 @app.get("/v1/projects/{project_id}/messages", response_model=list[MessageResponse])

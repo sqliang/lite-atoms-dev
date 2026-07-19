@@ -33,15 +33,21 @@ const STAGE_PREVIEW_HINTS: Record<string, string> = {
 };
 
 export default function AppPreview() {
-  const { projectId, stableVersionId, activeRunStage } = useWorkspace();
+  const { projectId, stableVersionId, selectedVersionId, activeRunStage } = useWorkspace();
   const [deviceMode, setDeviceMode] = useState<DeviceMode>('desktop');
   /** 递增以强制 iframe 重新加载 */
   const [refreshKey, setRefreshKey] = useState(0);
 
   const ticket = useQuery({
-    queryKey: ['preview-ticket', projectId, refreshKey],
-    queryFn: () => apiRequest<PreviewTicket>(`/v1/projects/${projectId}/preview-ticket`),
-    enabled: Boolean(stableVersionId),
+    // stableVersionId 变化（新版本发布）会自动换新 ticket，预览随之刷新
+    queryKey: ['preview-ticket', projectId, selectedVersionId ?? stableVersionId ?? 'none', refreshKey],
+    queryFn: () =>
+      apiRequest<PreviewTicket>(
+        selectedVersionId
+          ? `/v1/projects/${projectId}/versions/${selectedVersionId}/preview-ticket`
+          : `/v1/projects/${projectId}/preview-ticket`,
+      ),
+    enabled: Boolean(selectedVersionId || stableVersionId),
     retry: false,
   });
 
@@ -144,7 +150,7 @@ export default function AppPreview() {
           >
             {ticket.data ? (
               <iframe
-                key={refreshKey}
+                key={`${selectedVersionId ?? 'stable'}-${refreshKey}`}
                 className="absolute inset-0 h-full w-full border-0"
                 title="Stable generated application preview"
                 src={ticket.data.bootstrap_url}
@@ -153,7 +159,11 @@ export default function AppPreview() {
               />
             ) : (
               <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                {ticket.isError ? '预览授权失败，请点击刷新重试' : '正在获取预览授权…'}
+                {ticket.isError
+                  ? selectedVersionId
+                    ? '该版本没有可用的预览产物'
+                    : '预览授权失败，请点击刷新重试'
+                  : '正在获取预览授权…'}
               </div>
             )}
           </div>

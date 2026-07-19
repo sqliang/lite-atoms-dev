@@ -22,6 +22,7 @@
  */
 
 import { useState } from 'react';
+import Markdown from 'markdown-to-jsx';
 import { Bot, User, Eye, Code, FileText, Image, ChevronDown, ChevronUp, FileEdit, FileInput, FilePlus2, Shuffle, Settings2 } from 'lucide-react';
 import { useWorkspace, TabType } from '@/context/WorkspaceContext';
 
@@ -257,6 +258,26 @@ export default function ChatMessage({ message, defaultExpanded = false }: ChatMe
           </span>
         </div>
 
+        {/* AI 回复摘要文本（Markdown 渲染：列表/代码块/加粗等），置于工作流之上 */}
+        <div className="text-sm text-foreground/90 leading-relaxed">
+          <Markdown
+            options={{
+              overrides: {
+                pre: { props: { className: 'rounded-md bg-secondary/70 border border-border/50 p-3 my-2 overflow-x-auto text-[12px]' } },
+                code: { props: { className: 'font-mono text-[12px] bg-secondary/60 px-1 py-0.5 rounded' } },
+                ul: { props: { className: 'list-disc pl-5 my-1.5 space-y-1' } },
+                ol: { props: { className: 'list-decimal pl-5 my-1.5 space-y-1' } },
+                p: { props: { className: 'my-1.5' } },
+                h1: { props: { className: 'text-base font-semibold mt-3 mb-1.5' } },
+                h2: { props: { className: 'text-[15px] font-semibold mt-3 mb-1.5' } },
+                h3: { props: { className: 'text-sm font-semibold mt-2.5 mb-1' } },
+              },
+            }}
+          >
+            {message.content}
+          </Markdown>
+        </div>
+
         {/* 工作流步骤区域（可折叠） */}
         {steps.length > 0 && (
           <div className="space-y-0.5">
@@ -287,11 +308,6 @@ export default function ChatMessage({ message, defaultExpanded = false }: ChatMe
             )}
           </div>
         )}
-
-        {/* AI 回复摘要文本 */}
-        <div className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
-          {message.content}
-        </div>
 
         {/* 版本卡片 + 预览提示 */}
         {message.version && (

@@ -70,6 +70,17 @@ interface Contract {
   status: 'draft' | 'approved' | 'superseded';
 }
 
+/** One promoted project version, as shown in the version switcher. */
+export interface ProjectVersion {
+  id: string;
+  commit_sha: string;
+  message: string;
+  origin_kind: string;
+  created_at: string;
+  is_stable: boolean;
+  has_artifact: boolean;
+}
+
 const ACTIVE_RUN_STATUSES = new Set<Run['status']>(['queued', 'claimed', 'running', 'awaiting_approval']);
 
 /** Compose chat, explorer, editor, and preview around one project's real state. */
@@ -92,10 +103,22 @@ export function WorkspaceScreen({ projectId }: { projectId: string }) {
   // Runs arrive newest first; the workspace always follows the newest one.
   const currentRun = runs.data?.[0];
   const stableVersionId = project.data?.stable_version_id ?? null;
+  // The version switcher: null means the current stable (latest) version.
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const versions = useQuery({
+    queryKey: ['versions', projectId],
+    queryFn: () => apiRequest<ProjectVersion[]>(`/v1/projects/${projectId}/versions`),
+  });
+  const selectedVersion = versions.data?.find((version) => version.id === selectedVersionId) ?? null;
   const files = useQuery({
-    queryKey: ['files', projectId, stableVersionId],
-    queryFn: () => apiRequest<string[]>(`/v1/projects/${projectId}/files`),
-    enabled: Boolean(stableVersionId),
+    queryKey: ['files', projectId, selectedVersionId ?? stableVersionId],
+    queryFn: () =>
+      apiRequest<string[]>(
+        selectedVersionId
+          ? `/v1/projects/${projectId}/versions/${selectedVersionId}/files`
+          : `/v1/projects/${projectId}/files`,
+      ),
+    enabled: Boolean(selectedVersionId || stableVersionId),
   });
 
   // Shared with the ContractApproval card; decides which Run kind a retry needs.
@@ -191,6 +214,8 @@ export function WorkspaceScreen({ projectId }: { projectId: string }) {
         }
         if (type === 'version.promoted') {
           queryClient.invalidateQueries({ queryKey: ['files', projectId] });
+          queryClient.invalidateQueries({ queryKey: ['versions', projectId] });
+          queryClient.invalidateQueries({ queryKey: ['preview-ticket', projectId] });
         }
       },
     }).catch(() => undefined);
@@ -199,21 +224,39 @@ export function WorkspaceScreen({ projectId }: { projectId: string }) {
 
   const isRunActive = Boolean(currentRun && ACTIVE_RUN_STATUSES.has(currentRun.status));
   const isCancelling = currentRun?.status === 'cancelling';
+  /** Switch the code/preview view to a historical version; null restores the latest. */
+  const handleSelectVersion = (versionId: string | null) => {
+    setSelectedVersionId(versionId);
+    if (versionId) {
+      const version = versions.data?.find((candidate) => candidate.id === versionId);
+      toast.info(`已切换到历史版本 ${version?.commit_sha.slice(0, 7) ?? ''}，代码与预览为只读内容`);
+    } else {
+      toast.info('已回到最新版本');
+    }
+  };
   // The explorer merges stable files with in-progress draft paths so generated files
   // appear as they are written; draft content wins over the stable copy of the same path.
+  // Drafts only apply to the live (latest) view, never to a historical version.
   const projectFiles = useMemo(() => {
     const paths = new Set(files.data ?? []);
-    Object.keys(draftFiles).forEach((path) => paths.add(path));
+    if (!selectedVersionId) Object.keys(draftFiles).forEach((path) => paths.add(path));
     return buildFileTree([...paths]);
-  }, [files.data, draftFiles]);
+  }, [files.data, draftFiles, selectedVersionId]);
   const loadFileContent = useCallback(
-    (path: string) =>
-      path in draftFiles
-        ? Promise.resolve(draftFiles[path])
-        : apiRequest<ProjectFile>(`/v1/projects/${projectId}/files/${path}`).then((file) => file.content),
-    [projectId, draftFiles],
+    (path: string) => {
+      if (!selectedVersionId && path in draftFiles) return Promise.resolve(draftFiles[path]);
+      const url = selectedVersionId
+        ? `/v1/projects/${projectId}/versions/${selectedVersionId}/files/${path}`
+        : `/v1/projects/${projectId}/files/${path}`;
+      return apiRequest<ProjectFile>(url).then((file) => file.content);
+    },
+    [projectId, draftFiles, selectedVersionId],
   );
-  const activeRunStage = isRunActive || isCancelling ? currentRun?.stage ?? currentRun?.status ?? null : null;
+  const activeRunStage = selectedVersionId
+    ? null
+    : isRunActive || isCancelling
+      ? currentRun?.stage ?? currentRun?.status ?? null
+      : null;
 
   if (project.isLoading) {
     // 骨架屏保持详情页布局结构，避免刷新后长时间空白让用户误以为页面异常。
@@ -262,6 +305,7 @@ export function WorkspaceScreen({ projectId }: { projectId: string }) {
     <WorkspaceProvider
       projectId={projectId}
       stableVersionId={stableVersionId}
+      selectedVersionId={selectedVersionId}
       activeRunStage={activeRunStage}
       projectFiles={projectFiles}
       draftFiles={draftFiles}
@@ -279,6 +323,9 @@ export function WorkspaceScreen({ projectId }: { projectId: string }) {
               runs={runs.data ?? []}
               events={events}
               history={messages.data ?? []}
+              versions={versions.data ?? []}
+              selectedVersionId={selectedVersionId}
+              onSelectVersion={handleSelectVersion}
               buildDiagnostics={currentRun?.status === 'failed' ? buildLog.data?.diagnostics ?? null : null}
               onSend={(instruction) => startRun.mutate({ kind: 'update', instruction })}
               onRetry={retryFailedRun}
@@ -298,7 +345,24 @@ export function WorkspaceScreen({ projectId }: { projectId: string }) {
 
           {/* 右侧面板：代码编辑器/预览 */}
           <Panel defaultSize={62} minSize={35}>
-            <WorkspacePanel />
+            <div className="flex h-full flex-col">
+              {selectedVersion && (
+                <div className="flex items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1.5 flex-shrink-0">
+                  <span className="text-[11px] text-amber-700 dark:text-amber-400 truncate">
+                    正在查看历史版本 {selectedVersion.commit_sha.slice(0, 7)}（{selectedVersion.message}）· 只读
+                  </span>
+                  <button
+                    className="text-[11px] font-medium text-amber-700 dark:text-amber-300 hover:underline cursor-pointer flex-shrink-0"
+                    onClick={() => handleSelectVersion(null)}
+                  >
+                    回到最新版本
+                  </button>
+                </div>
+              )}
+              <div className="flex-1 min-h-0">
+                <WorkspacePanel />
+              </div>
+            </div>
           </Panel>
         </PanelGroup>
       </div>

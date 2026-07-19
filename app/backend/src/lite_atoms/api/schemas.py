@@ -61,6 +61,16 @@ class MessageResponse(BaseModel):
     created_at: datetime
 
 
+class VersionResponse(BaseModel):
+    id: UUID
+    commit_sha: str
+    message: str
+    origin_kind: str
+    created_at: datetime
+    is_stable: bool
+    has_artifact: bool
+
+
 class BuildLogResponse(BaseModel):
     attempt_no: int
     status: str

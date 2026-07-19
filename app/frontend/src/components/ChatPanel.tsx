@@ -18,12 +18,12 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Square, Sparkles, History, ArrowDown, Home, RefreshCw } from 'lucide-react';
+import { Send, Square, Sparkles, History, ArrowDown, Home, RefreshCw, CheckCircle2, LoaderCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import ChatMessage, { ChatMessageData, StepItem } from './ChatMessage';
 import { ContractApproval } from '@/features/contracts/ui/ContractApproval';
-import type { ChatMessageRecord, Run, StreamEvent } from '@/features/workspace/ui/WorkspaceScreen';
+import type { ChatMessageRecord, ProjectVersion, Run, StreamEvent } from '@/features/workspace/ui/WorkspaceScreen';
 
 /** SSE 事件类型到工作流步骤文案的映射（与 Worker 状态机一一对应） */
 const EVENT_STEP_LABELS: Record<string, string> = {
@@ -46,17 +46,6 @@ const RUN_KIND_LABELS: Record<Run['kind'], string> = {
   update: '需求更新',
   retry: '失败重试',
   restore: '版本恢复',
-};
-
-const RUN_STATUS_LABELS: Record<Run['status'], string> = {
-  queued: '排队中',
-  claimed: '已接管',
-  running: '生成中',
-  awaiting_approval: '待确认',
-  cancelling: '终止中',
-  completed: '已完成',
-  failed: '失败',
-  cancelled: '已取消',
 };
 
 const ACTIVE_RUN_STATUSES = new Set<Run['status']>(['queued', 'claimed', 'running']);
@@ -85,6 +74,9 @@ function runSummary(run: Run): string {
  * @property runs - 项目的 Run 列表（新→旧）
  * @property events - 最新 Run 的持久化 SSE 事件
  * @property history - 服务端持久化的对话历史（用户指令 + assistant 摘要）
+ * @property versions - 已提升的版本列表（新→旧），用于版本切换
+ * @property selectedVersionId - 当前查看的历史版本；null 为最新稳定版
+ * @property onSelectVersion - 切换查看的版本（null 回到最新）
  * @property buildDiagnostics - 失败 Run 的构建诊断（可折叠展示）
  * @property onSend - 发送新指令（创建 update Run）
  * @property onRetry - 重试失败的 Run（无契约时重新规划，有契约时重试构建）
@@ -99,6 +91,9 @@ interface ChatPanelProps {
   runs: Run[];
   events: StreamEvent[];
   history: ChatMessageRecord[];
+  versions: ProjectVersion[];
+  selectedVersionId: string | null;
+  onSelectVersion: (versionId: string | null) => void;
   buildDiagnostics: string | null;
   onSend: (instruction: string) => void;
   onRetry: () => void;
@@ -114,6 +109,9 @@ export default function ChatPanel({
   runs,
   events,
   history,
+  versions,
+  selectedVersionId,
+  onSelectVersion,
   buildDiagnostics,
   onSend,
   onRetry,
@@ -129,7 +127,20 @@ export default function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const versionsMenuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  /** 版本下拉菜单：点击菜单外任意位置自动收起 */
+  useEffect(() => {
+    if (!showVersions) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!versionsMenuRef.current?.contains(event.target as Node)) {
+        setShowVersions(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [showVersions]);
 
   /** 项目名称：加载中时显示占位文本 */
   const projectName = propProjectName || '加载中…';
@@ -139,14 +150,42 @@ export default function ChatPanel({
   const isTyping = Boolean(
     currentRun && (ACTIVE_RUN_STATUSES.has(currentRun.status) || currentRun.status === 'cancelling'),
   );
-  /** 当前阶段文案：取最近一条可映射的 SSE 事件，作为生成中的常驻提示 */
+  /** 当前阶段文案：跟随最新 SSE 事件，文件写入时直接展示正在写哪个文件 */
   const currentStageLabel = useMemo(() => {
     for (let index = events.length - 1; index >= 0; index -= 1) {
-      const label = EVENT_STEP_LABELS[events[index].type];
+      const { type, event } = events[index];
+      if (type === 'builder.file_written') {
+        return `正在写入 ${String(event.payload.path ?? '源文件')}…`;
+      }
+      const label = EVENT_STEP_LABELS[type];
       if (label) return label;
     }
     return null;
   }, [events]);
+
+  /**
+   * 构建阶段状态条：代码生成结束后进入校验/构建/提交/发布阶段时持续可见，
+   * 让用户知道预览为何还没刷新；完成后短暂展示新版本 Commit。
+   */
+  const buildStatus = useMemo(() => {
+    if (!currentRun) return null;
+    const stageLabels: Record<string, string> = {
+      validating: '代码生成完成，正在校验…',
+      typechecking: '正在构建（TypeScript 检查 + Vite Build）…',
+      building: '正在构建（TypeScript 检查 + Vite Build）…',
+      repairing: '构建未通过，正在自动修复…',
+      committing: '构建成功，正在提交新版本…',
+      promoting: '正在发布预览…',
+    };
+    if (ACTIVE_RUN_STATUSES.has(currentRun.status) && currentRun.stage && stageLabels[currentRun.stage]) {
+      return { kind: 'running' as const, label: stageLabels[currentRun.stage] };
+    }
+    if (currentRun.status === 'completed') {
+      const sha = versions[0]?.commit_sha;
+      return { kind: 'done' as const, label: `构建完成，预览已更新${sha ? ` · 新版本 ${sha.slice(0, 7)}` : ''}` };
+    }
+    return null;
+  }, [currentRun, versions]);
 
   /** 组装消息列表：持久化历史 + 最新 Run 的实时工作流（若历史尚未覆盖它） */
   const messages = useMemo<ChatMessageData[]>(() => {
@@ -260,8 +299,8 @@ export default function ChatPanel({
           </div>
           <span className="text-sm font-semibold text-foreground">{projectName}</span>
         </div>
-        {/* Run 历史按钮 */}
-        <div className="relative">
+        {/* 版本历史按钮 */}
+        <div className="relative" ref={versionsMenuRef}>
           <Button
             variant="ghost"
             size="icon"
@@ -272,24 +311,45 @@ export default function ChatPanel({
             <History className="w-4 h-4" />
           </Button>
 
-          {/* Run 历史下拉菜单 */}
+          {/* 版本历史下拉菜单：切换到任一已提升版本的只读视图 */}
           {showVersions && (
-            <div className="absolute right-0 top-9 w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1 animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="absolute right-0 top-9 w-56 bg-card border border-border rounded-lg shadow-lg z-50 py-1 animate-in fade-in slide-in-from-top-1 duration-200 max-h-72 overflow-y-auto">
               <p className="text-[10px] text-muted-foreground/60 uppercase tracking-wider font-medium px-3 py-1.5">
-                Run 历史
+                版本历史
               </p>
-              {runs.length === 0 && (
-                <p className="px-3 py-2 text-xs text-muted-foreground">暂无运行记录</p>
+              {versions.length === 0 && (
+                <p className="px-3 py-2 text-xs text-muted-foreground">暂无已发布版本</p>
               )}
-              {runs.map((run) => (
-                <div
-                  key={run.id}
-                  className="w-full text-left px-3 py-2 hover:bg-secondary/60 transition-colors text-xs flex items-center justify-between"
-                >
-                  <span className="font-medium text-foreground/90">{RUN_KIND_LABELS[run.kind]}</span>
-                  <span className="text-[10px] text-muted-foreground">{RUN_STATUS_LABELS[run.status]}</span>
-                </div>
-              ))}
+              {versions.map((version) => {
+                const isSelected = selectedVersionId ? version.id === selectedVersionId : version.is_stable;
+                return (
+                  <button
+                    key={version.id}
+                    className={`w-full text-left px-3 py-2 transition-colors text-xs cursor-pointer ${
+                      isSelected ? 'bg-primary/10' : 'hover:bg-secondary/60'
+                    }`}
+                    onClick={() => {
+                      onSelectVersion(version.is_stable ? null : version.id);
+                      setShowVersions(false);
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-foreground/90 font-mono">{version.commit_sha.slice(0, 7)}</span>
+                      {version.is_stable && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600">当前</span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <span className="text-[10px] text-muted-foreground truncate">
+                        {RUN_KIND_LABELS[version.origin_kind as Run['kind']] ?? version.origin_kind} · {version.message}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/60 flex-shrink-0 ml-2">
+                        {new Date(version.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -309,8 +369,8 @@ export default function ChatPanel({
               defaultExpanded={isTyping && msg.id === `run-${currentRun?.id}`}
             />
           ))}
-          {/* AI 正在生成的动画指示器（生成/终止期间常驻，附当前阶段文案） */}
-          {isTyping && (
+          {/* AI 正在生成的动画指示器（代码生成阶段常驻；构建阶段由下方状态条接管） */}
+          {isTyping && !buildStatus && (
             <div className="flex gap-3 px-4 py-3">
               <div className="flex-shrink-0 w-7 h-7 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
                 <Sparkles className="w-4 h-4 text-primary animate-pulse" />
@@ -350,6 +410,26 @@ export default function ChatPanel({
                 <RefreshCw className="w-3.5 h-3.5" />
                 重试生成
               </Button>
+            </div>
+          )}
+          {/* 最新一轮会话的构建状态：代码生成完成后的校验/构建/提交/发布进度，
+              以及完成时的新版本 Commit。跟随当前 Run，新一轮会话开始后自然更新。 */}
+          {buildStatus && (
+            <div className="px-4 py-2">
+              <div
+                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
+                  buildStatus.kind === 'done'
+                    ? 'border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400'
+                    : 'border-border/70 bg-secondary/40 text-foreground/80'
+                }`}
+              >
+                {buildStatus.kind === 'done' ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                ) : (
+                  <LoaderCircle className="w-3.5 h-3.5 flex-shrink-0 animate-spin" />
+                )}
+                <span>{buildStatus.label}</span>
+              </div>
             </div>
           )}
           <div ref={messagesEndRef} />
