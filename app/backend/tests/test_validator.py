@@ -19,6 +19,18 @@ def test_accepts_allowlisted_react_source(tmp_path: Path) -> None:
     validate_source_tree(tmp_path)
 
 
+def test_ignores_node_modules_and_dist_from_build(tmp_path: Path) -> None:
+    """A worktree re-validated after a build must not count dependency/output trees."""
+    write_minimal_project(tmp_path)
+    dependency_dir = tmp_path / "node_modules" / "react"
+    dependency_dir.mkdir(parents=True)
+    (dependency_dir / "index.js").write_text("module.exports = {}", encoding="utf-8")
+    dist_dir = tmp_path / "dist" / "assets"
+    dist_dir.mkdir(parents=True)
+    (dist_dir / "index.js").write_text("console.log(1)", encoding="utf-8")
+    validate_source_tree(tmp_path)
+
+
 def test_accepts_platform_owned_pnpm_lockfile(tmp_path: Path) -> None:
     """The fixed template lockfile must survive validation before an offline build."""
     write_minimal_project(tmp_path)
