@@ -165,7 +165,17 @@ export function ChartWidget({ title, data }: ChartWidgetProps) {
   },
 ];
 
-export default function ChatPanel() {
+/**
+ * ChatPanel 组件 Props
+ * @property projectName - 从 Supabase 获取的项目名称（可选，加载中时为 undefined）
+ * @property projectDescription - 从 Supabase 获取的项目描述（可选）
+ */
+interface ChatPanelProps {
+  projectName?: string;
+  projectDescription?: string;
+}
+
+export default function ChatPanel({ projectName: propProjectName, projectDescription: _projectDescription }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessageData[]>(DEMO_MESSAGES);
   const [input, setInput] = useState('');
   /** AI 正在生成回复的状态 */
@@ -179,8 +189,8 @@ export default function ChatPanel() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
 
-  // TODO: 从服务端根据 sessionId 获取项目名称
-  const projectName = 'Dashboard App';
+  /** 项目名称：优先使用从 Supabase 获取的名称，加载中时显示占位文本 */
+  const projectName = propProjectName || '加载中...';
 
   /** 新消息到达时自动滚动到底部 */
   useEffect(() => {

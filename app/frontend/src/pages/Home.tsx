@@ -72,6 +72,7 @@ export default function HomePage() {
   /**
    * 获取当前用户的项目列表
    * 从 Supabase projects 表查询，按更新时间倒序排列，最多返回 20 条
+   * 如果用户没有任何项目，自动插入 mock 数据用于调试
    */
   useEffect(() => {
     if (!user) return;
@@ -82,16 +83,38 @@ export default function HomePage() {
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false })
         .limit(20);
-      if (data) {
-        setProjects(
-          data.map((p) => ({
-            sessionId: p.id,
-            title: p.name || '未命名项目',
-            description: p.description || '',
-            updatedAt: formatRelativeTime(p.updated_at),
-          }))
-        );
+
+      // 如果用户没有项目，自动插入 mock 数据
+      if (!data || data.length === 0) {
+        await supabase.rpc('insert_mock_projects_for_user');
+        // 重新查询
+        const { data: refreshed } = await supabase
+          .from('app_bd56170962_projects')
+          .select('id, name, description, updated_at')
+          .eq('user_id', user.id)
+          .order('updated_at', { ascending: false })
+          .limit(20);
+        if (refreshed) {
+          setProjects(
+            refreshed.map((p) => ({
+              sessionId: p.id,
+              title: p.name || '未命名项目',
+              description: p.description || '',
+              updatedAt: formatRelativeTime(p.updated_at),
+            }))
+          );
+        }
+        return;
       }
+
+      setProjects(
+        data.map((p) => ({
+          sessionId: p.id,
+          title: p.name || '未命名项目',
+          description: p.description || '',
+          updatedAt: formatRelativeTime(p.updated_at),
+        }))
+      );
     };
     fetchProjects();
   }, [user]);
