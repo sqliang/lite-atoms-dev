@@ -15,6 +15,7 @@ import { GripVertical, LoaderCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { WorkspaceProvider } from '@/context/WorkspaceContext';
 import ChatPanel, { type RunReferenceInput } from '@/components/ChatPanel';
+import type { RunMode } from '@/shared/ui/ModeSelect';
 import WorkspacePanel from '@/components/WorkspacePanel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, apiRequest } from '@/shared/api/client';
@@ -121,7 +122,7 @@ export function WorkspaceScreen({ projectId }: { projectId: string }) {
     enabled: Boolean(selectedVersionId || stableVersionId),
   });
 
-  // Shared with the ContractApproval card; decides which Run kind a retry needs.
+  // Shared with the PlanCard; decides which Run kind a retry needs.
   const contracts = useQuery({
     queryKey: ['contracts', projectId],
     queryFn: () => apiRequest<Contract[]>(`/v1/projects/${projectId}/contracts`),
@@ -141,10 +142,10 @@ export function WorkspaceScreen({ projectId }: { projectId: string }) {
   });
 
   const startRun = useMutation({
-    mutationFn: (input: { kind: Run['kind']; instruction?: string; references?: RunReferenceInput[] }) =>
+    mutationFn: (input: { kind: Run['kind']; instruction?: string; references?: RunReferenceInput[]; mode?: RunMode }) =>
       apiRequest<Run>(`/v1/projects/${projectId}/runs`, {
         method: 'POST',
-        body: JSON.stringify({ kind: input.kind, request_id: crypto.randomUUID(), instruction: input.instruction, references: input.references ?? [] }),
+        body: JSON.stringify({ kind: input.kind, request_id: crypto.randomUUID(), instruction: input.instruction, references: input.references ?? [], mode: input.mode ?? 'build' }),
       }),
     onSuccess: () => {
       // The user message was persisted by create_run; refresh history and run state.
@@ -327,7 +328,7 @@ export function WorkspaceScreen({ projectId }: { projectId: string }) {
               selectedVersionId={selectedVersionId}
               onSelectVersion={handleSelectVersion}
               buildDiagnostics={currentRun?.status === 'failed' ? buildLog.data?.diagnostics ?? null : null}
-              onSend={(instruction, references) => startRun.mutate({ kind: 'update', instruction, references })}
+              onSend={(instruction, references, mode) => startRun.mutate({ kind: 'update', instruction, references, mode })}
               onRetry={retryFailedRun}
               onCancel={() => currentRun && cancelRun.mutate(currentRun.id)}
               isSending={startRun.isPending}
