@@ -3,6 +3,10 @@
  *
  * It isolates an older third-party dependency, validates response semantics, and keeps
  * bearer tokens out of URLs. Feature code consumes typed events rather than library APIs.
+ *
+ * Retry design: fetch-event-source freezes request headers for its internal retries,
+ * so an expired token cannot be healed inside `onopen`. The single token refresh
+ * therefore lives in the outer loop, where every attempt calls `authHeaders()` again.
  */
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { apiBaseUrl } from '@/shared/api/client';
@@ -28,10 +32,26 @@ export interface ConnectRunEventsInput {
 }
 
 class TerminalSseError extends Error {}
+class UnauthorizedSseError extends Error {}
 
-/** Connect and replay a Run stream. Abort always stops retries immediately. */
+/** Connect and replay a Run stream; one token refresh is attempted on 401. */
 export async function connectRunEvents(input: ConnectRunEventsInput): Promise<void> {
-  let refreshed = false;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await openRunStream(input);
+      return;
+    } catch (error) {
+      if (error instanceof UnauthorizedSseError && attempt === 0 && !input.signal.aborted) {
+        await supabase.auth.refreshSession();
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
+/** Open one stream attempt with freshly minted headers. Abort always stops retries. */
+async function openRunStream(input: ConnectRunEventsInput): Promise<void> {
   input.onConnectionState('connecting');
   await fetchEventSource(`${apiBaseUrl}/v1/projects/${input.projectId}/runs/${input.runId}/events`, {
     method: 'GET',
@@ -44,11 +64,7 @@ export async function connectRunEvents(input: ConnectRunEventsInput): Promise<vo
         input.onConnectionState('connected');
         return;
       }
-      if (response.status === 401 && !refreshed) {
-        refreshed = true;
-        await supabase.auth.refreshSession();
-        throw new Error('retry_after_refresh');
-      }
+      if (response.status === 401) throw new UnauthorizedSseError('SSE unauthorized (401)');
       if (response.status === 410) {
         await input.onHistoryExpired();
         throw new Error('retry_after_snapshot');
@@ -72,7 +88,8 @@ export async function connectRunEvents(input: ConnectRunEventsInput): Promise<vo
       throw new TerminalSseError('SSE stream closed by the server');
     },
     onerror(error) {
-      if (input.signal.aborted || error instanceof TerminalSseError) throw error;
+      // 401 must reach the outer refresh loop, not the frozen-header internal retry.
+      if (input.signal.aborted || error instanceof TerminalSseError || error instanceof UnauthorizedSseError) throw error;
       input.onConnectionState('reconnecting');
       return Math.min(1_000 * 2 ** Math.min(3, Math.floor(Math.random() * 4)), 10_000);
     },
