@@ -84,8 +84,8 @@ export default function HomePage() {
         .order('updated_at', { ascending: false })
         .limit(20);
 
-      // 如果用户没有项目，自动插入 mock 数据
-      if (!data || data.length === 0) {
+      // 如果用户项目少于 3 个，自动插入 mock 数据补充到至少 3 个
+      if (!data || data.length < 3) {
         await supabase.rpc('insert_mock_projects_for_user');
         // 重新查询
         const { data: refreshed } = await supabase
@@ -140,13 +140,17 @@ export default function HomePage() {
     if (!input.trim() || !user || creating) return;
     setCreating(true);
 
+    // 从用户输入中提取项目名称：取第一行前 30 个字符作为名称
+    const trimmedInput = input.trim();
+    const projectName = trimmedInput.split('\n')[0].slice(0, 30) || '未命名项目';
+
     // 向 Supabase 插入新项目记录，获取自动生成的 UUID
     const { data, error } = await supabase
       .from('app_bd56170962_projects')
       .insert({
         user_id: user.id,
-        name: '未命名项目',
-        description: input.trim(),
+        name: projectName,
+        description: trimmedInput,
       })
       .select('id')
       .single();
