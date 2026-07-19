@@ -11,22 +11,9 @@ import FileTree from './FileTree';
 import { toast } from 'sonner';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import type { FileNode } from '@/context/WorkspaceContext';
+import { collectFilePaths } from '@/features/workspace/model/project-files';
 
 type ViewMode = 'code' | 'preview';
-
-function collectAllFiles(nodes: FileNode[], prefix = ''): { path: string; content: string }[] {
-  const files: { path: string; content: string }[] = [];
-  for (const node of nodes) {
-    const currentPath = prefix ? `${prefix}/${node.name}` : node.name;
-    if (node.type === 'folder' && node.children) {
-      files.push(...collectAllFiles(node.children, currentPath));
-    } else if (node.type === 'file' && node.content) {
-      files.push({ path: currentPath, content: node.content });
-    }
-  }
-  return files;
-}
 
 function fallbackCopyToClipboard(text: string): boolean {
   const textarea = document.createElement('textarea');
@@ -49,7 +36,7 @@ function fallbackCopyToClipboard(text: string): boolean {
 }
 
 export default function WorkspacePanel() {
-  const { tabs, activeTabId, closeTab, closeAllTabs, setActiveTab, projectFiles } = useWorkspace();
+  const { tabs, activeTabId, closeTab, closeAllTabs, setActiveTab, projectFiles, loadFileContent } = useWorkspace();
   const [isTreeCollapsed, setIsTreeCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('code');
   const tabsContainerRef = useRef<HTMLDivElement>(null);
@@ -115,20 +102,18 @@ export default function WorkspacePanel() {
     toast.success(`Downloaded ${activeTab.title}`);
   };
 
+  /** 整包下载：稳定版本的文件内容不在文件树中内联，按需逐个拉取后打包 */
   const handleDownloadProject = async () => {
-    const allFiles = collectAllFiles(projectFiles);
-    if (allFiles.length === 0) {
-      toast.error('No project files to download');
+    const paths = collectFilePaths(projectFiles);
+    if (paths.length === 0) {
+      toast.error('暂无可下载的项目文件');
       return;
     }
 
-    const zip = new JSZip();
-
-    for (const file of allFiles) {
-      zip.file(file.path, file.content);
-    }
-
     try {
+      const contents = await Promise.all(paths.map((path) => loadFileContent(path)));
+      const zip = new JSZip();
+      paths.forEach((path, index) => zip.file(path, contents[index]));
       const blob = await zip.generateAsync({ type: 'blob' });
       saveAs(blob, 'project.zip');
       toast.success('Project downloaded as ZIP');

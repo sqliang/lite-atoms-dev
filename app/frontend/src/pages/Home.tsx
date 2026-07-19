@@ -9,59 +9,73 @@
  *
  * 核心业务流程（Session 预生成）：
  * - 用户输入构建需求 → 点击"开始构建"
- * - 前端向 Supabase `projects` 表插入一条新记录
- * - 获取返回的 project UUID 作为 session_id
- * - 携带 session_id 跳转到工作台页面 /project/:sessionId
+ * - 前端经 FastAPI 创建项目并获得项目 UUID
+ * - 携带项目 UUID 跳转到工作台页面 /project/:sessionId
  *
  * 数据表结构参考：
- * projects (id UUID PK, user_id UUID FK, name, description, current_commit_id, created_at, updated_at)
+ * Project 事实数据由 FastAPI 读取；Supabase 客户端只维持用户认证。
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, ArrowRight, Layers, Clock, ChevronRight, LogOut, User, Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Sparkles, ArrowRight, Layers, Clock, ChevronRight, LogOut, User, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/context/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { apiRequest } from '@/shared/api/client';
 
 /**
  * 项目列表项数据结构
- * @property sessionId - 项目唯一标识（对应 projects.id），用于 URL 路由
- * @property title - 项目名称，默认为"未命名项目"
- * @property description - 项目描述，即用户最初输入的构建需求
- * @property updatedAt - 相对时间字符串（如"2 小时前"）
+ * @property id - 项目 UUID，用于 URL 路由
+ * @property original_prompt - 用户最初输入的需求
  */
 interface Project {
-  sessionId: string;
+  id: string;
   title: string;
-  description: string;
-  updatedAt: string;
+  original_prompt: string;
+  lifecycle_status: string;
+  /** 最新一次 Run 的状态，用于列表级进度标识 */
+  latest_run_status: string | null;
 }
 
-/**
- * 将 ISO 时间字符串转换为中文相对时间描述
- * @param dateStr - ISO 8601 格式的时间字符串
- * @returns 中文相对时间（如"刚刚"、"5 分钟前"、"2 天前"）
- */
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return '刚刚';
-  if (diffMin < 60) return `${diffMin} 分钟前`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr} 小时前`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay < 30) return `${diffDay} 天前`;
-  return `${Math.floor(diffDay / 30)} 个月前`;
+/** 仍在推进中的 Run 状态，列表需要持续轮询以更新标识 */
+const ACTIVE_RUN_STATUSES = new Set(['queued', 'claimed', 'running', 'awaiting_approval', 'cancelling']);
+
+/** 项目状态标识：优先展示最新 Run 的进展，其次展示项目生命周期状态 */
+function ProjectStatusBadge({ project }: { project: Project }) {
+  const runStatus = project.latest_run_status;
+  if (runStatus && ACTIVE_RUN_STATUSES.has(runStatus)) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[9px] text-primary">
+        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+        生成中
+      </span>
+    );
+  }
+  if (runStatus === 'failed') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[9px] text-destructive">
+        <AlertCircle className="w-2.5 h-2.5" />
+        生成失败
+      </span>
+    );
+  }
+  if (runStatus === 'cancelled') {
+    return <span className="text-[9px] text-muted-foreground/60">已取消</span>;
+  }
+  const lifecycleLabels: Record<string, string> = { ready: '已就绪', draft: '草稿', awaiting_approval: '待确认' };
+  return (
+    <span className="inline-flex items-center gap-1 text-[9px] text-muted-foreground/40">
+      <Clock className="w-2.5 h-2.5" />
+      {lifecycleLabels[project.lifecycle_status] ?? project.lifecycle_status}
+    </span>
+  );
 }
 
 export default function HomePage() {
   /** 用户输入的项目构建需求文本 */
   const [input, setInput] = useState('');
-  /** 从 Supabase 查询到的用户项目列表 */
-  const [projects, setProjects] = useState<Project[]>([]);
   /** 控制用户菜单弹窗的显示/隐藏 */
   const [showUserMenu, setShowUserMenu] = useState(false);
   /** 项目创建中的加载状态，防止重复提交 */
@@ -69,55 +83,17 @@ export default function HomePage() {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
 
-  /**
-   * 获取当前用户的项目列表
-   * 从 Supabase projects 表查询，按更新时间倒序排列，最多返回 20 条
-   * 如果用户没有任何项目，自动插入 mock 数据用于调试
-   */
-  useEffect(() => {
-    if (!user) return;
-    const fetchProjects = async () => {
-      const { data } = await supabase
-        .from('app_bd56170962_projects')
-        .select('id, name, description, updated_at')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false })
-        .limit(20);
-
-      // 如果用户项目少于 3 个，自动插入 mock 数据补充到至少 3 个
-      if (!data || data.length < 3) {
-        await supabase.rpc('insert_mock_projects_for_user');
-        // 重新查询
-        const { data: refreshed } = await supabase
-          .from('app_bd56170962_projects')
-          .select('id, name, description, updated_at')
-          .eq('user_id', user.id)
-          .order('updated_at', { ascending: false })
-          .limit(20);
-        if (refreshed) {
-          setProjects(
-            refreshed.map((p) => ({
-              sessionId: p.id,
-              title: p.name || '未命名项目',
-              description: p.description || '',
-              updatedAt: formatRelativeTime(p.updated_at),
-            }))
-          );
-        }
-        return;
-      }
-
-      setProjects(
-        data.map((p) => ({
-          sessionId: p.id,
-          title: p.name || '未命名项目',
-          description: p.description || '',
-          updatedAt: formatRelativeTime(p.updated_at),
-        }))
-      );
-    };
-    fetchProjects();
-  }, [user]);
+  const projectsQuery = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => apiRequest<Project[]>('/v1/projects'),
+    enabled: Boolean(user),
+    // 有项目处于生成中时低频轮询，让列表标识随 Run 状态推进自动更新
+    refetchInterval: (query) =>
+      query.state.data?.some((project) => project.latest_run_status && ACTIVE_RUN_STATUSES.has(project.latest_run_status))
+        ? 3_000
+        : false,
+  });
+  const projects = projectsQuery.data ?? [];
 
   /** 用户登出并重定向到登录页 */
   const handleSignOut = async () => {
@@ -130,8 +106,8 @@ export default function HomePage() {
    *
    * 业务流程：
    * 1. 校验输入非空且用户已登录
-   * 2. 向 Supabase projects 表插入新记录（user_id + description）
-   * 3. 获取数据库返回的 project UUID（即 session_id）
+   * 2. 向 FastAPI 创建受认证保护的项目记录
+   * 3. 获取数据库返回的 project UUID
    * 4. 携带用户输入的 prompt 跳转到工作台页面
    *
    * 注意：此处不携带任何 AI 逻辑，纯粹是数据库插入 + 路由跳转
@@ -140,28 +116,17 @@ export default function HomePage() {
     if (!input.trim() || !user || creating) return;
     setCreating(true);
 
-    // 从用户输入中提取项目名称：取第一行前 30 个字符作为名称
     const trimmedInput = input.trim();
-    const projectName = trimmedInput.split('\n')[0].slice(0, 30) || '未命名项目';
-
-    // 向 Supabase 插入新项目记录，获取自动生成的 UUID
-    const { data, error } = await supabase
-      .from('app_bd56170962_projects')
-      .insert({
-        user_id: user.id,
-        name: projectName,
-        description: trimmedInput,
-      })
-      .select('id')
-      .single();
-
-    if (error || !data) {
+    try {
+      const data = await apiRequest<Project>('/v1/projects', { method: 'POST', body: JSON.stringify({ prompt: trimmedInput }) });
+      const run = await apiRequest<{ id: string }>(`/v1/projects/${data.id}/runs`, {
+        method: 'POST',
+        body: JSON.stringify({ kind: 'initial', request_id: crypto.randomUUID(), instruction: trimmedInput }),
+      });
+      navigate(`/project/${data.id}`, { state: { prompt: trimmedInput, runId: run.id } });
+    } catch {
       setCreating(false);
-      return;
     }
-
-    // 使用返回的 project.id 作为 session_id 进行路由跳转
-    navigate(`/project/${data.id}`, { state: { prompt: input.trim() } });
   };
 
   /**
@@ -176,8 +141,8 @@ export default function HomePage() {
   };
 
   /** 点击项目列表项，跳转到对应工作台 */
-  const handleProjectClick = (sessionId: string) => {
-    navigate(`/project/${sessionId}`);
+  const handleProjectClick = (projectId: string) => {
+    navigate(`/project/${projectId}`);
   };
 
   return (
@@ -200,10 +165,24 @@ export default function HomePage() {
             最近项目
           </p>
           <div className="space-y-0.5">
+            {/* 加载中：骨架屏避免列表空白让用户误以为页面异常 */}
+            {projectsQuery.isLoading &&
+              Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="px-3 py-2.5 space-y-1.5">
+                  <Skeleton className="h-3.5 w-3/4" />
+                  <Skeleton className="h-2.5 w-full" />
+                  <Skeleton className="h-2 w-1/3" />
+                </div>
+              ))}
+            {!projectsQuery.isLoading && projects.length === 0 && (
+              <p className="px-3 py-4 text-[11px] text-muted-foreground/60 leading-relaxed">
+                还没有项目，从右侧输入你的第一个想法吧。
+              </p>
+            )}
             {projects.map((project) => (
               <button
-                key={project.sessionId}
-                onClick={() => handleProjectClick(project.sessionId)}
+                key={project.id}
+                onClick={() => handleProjectClick(project.id)}
                 className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-secondary/60 transition-colors duration-150 group cursor-pointer"
               >
                 <div className="flex items-center justify-between">
@@ -213,11 +192,10 @@ export default function HomePage() {
                   <ChevronRight className="w-3 h-3 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
                 <p className="text-[10px] text-muted-foreground/60 truncate mt-0.5">
-                  {project.description}
+                  {project.original_prompt}
                 </p>
                 <div className="flex items-center gap-1 mt-1">
-                  <Clock className="w-2.5 h-2.5 text-muted-foreground/40" />
-                  <span className="text-[9px] text-muted-foreground/40">{project.updatedAt}</span>
+                  <ProjectStatusBadge project={project} />
                 </div>
               </button>
             ))}
@@ -278,7 +256,7 @@ export default function HomePage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="例如：帮我创建一个带有用户认证的待办事项应用..."
+                placeholder="例如：帮我创建一个待办事项应用..."
                 rows={4}
                 className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none leading-relaxed"
               />

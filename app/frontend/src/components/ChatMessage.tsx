@@ -71,13 +71,15 @@ export interface ChatMessageData {
 
 interface ChatMessageProps {
   message: ChatMessageData;
+  /** 生成中的消息默认展开工作流步骤，让用户实时看到生成过程 */
+  defaultExpanded?: boolean;
 }
 
-export default function ChatMessage({ message }: ChatMessageProps) {
+export default function ChatMessage({ message, defaultExpanded = false }: ChatMessageProps) {
   const { openTab, findAndOpenFileByName } = useWorkspace();
   const isUser = message.role === 'user';
   /** 工作流步骤区域的展开/折叠状态 */
-  const [stepsExpanded, setStepsExpanded] = useState(false);
+  const [stepsExpanded, setStepsExpanded] = useState(defaultExpanded);
 
   /**
    * 打开附件到编辑器标签页
@@ -101,39 +103,40 @@ export default function ChatMessage({ message }: ChatMessageProps) {
    * 3. 兜底创建占位标签页
    */
   const handleFileClick = (file: string) => {
-    // 优先级 1：在项目文件树中查找
-    const foundInTree = findAndOpenFileByName(file);
-    if (foundInTree) return;
+    // 优先级 1：在项目文件树中查找（真实文件按需异步加载内容）
+    void findAndOpenFileByName(file).then((foundInTree) => {
+      if (foundInTree) return;
 
-    // 优先级 2：在当前消息的附件中查找
-    const matchingAttachment = message.attachments?.find(
-      (att) => att.title === file || att.title.endsWith(file)
-    );
+      // 优先级 2：在当前消息的附件中查找
+      const matchingAttachment = message.attachments?.find(
+        (att) => att.title === file || att.title.endsWith(file)
+      );
 
-    if (matchingAttachment) {
+      if (matchingAttachment) {
+        openTab({
+          id: matchingAttachment.id,
+          title: matchingAttachment.title,
+          type: matchingAttachment.type,
+          content: matchingAttachment.content,
+          language: matchingAttachment.language,
+        });
+        return;
+      }
+
+      // 优先级 3：兜底 - 创建占位标签页
+      const ext = file.split('.').pop() || '';
+      const langMap: Record<string, string> = {
+        ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+        css: 'css', json: 'json', html: 'html', md: 'markdown', yaml: 'yaml',
+        py: 'python', go: 'go', rs: 'rust', png: 'text', jpg: 'text',
+      };
       openTab({
-        id: matchingAttachment.id,
-        title: matchingAttachment.title,
-        type: matchingAttachment.type,
-        content: matchingAttachment.content,
-        language: matchingAttachment.language,
+        id: `file-${file}-${message.id}`,
+        title: file,
+        type: file.match(/\.(png|jpg|jpeg|gif|svg|webp)$/) ? 'image' : 'code',
+        content: `// ${file}\n// This file was referenced in the workflow but its content is not available yet.`,
+        language: langMap[ext] || 'typescript',
       });
-      return;
-    }
-
-    // 优先级 3：兜底 - 创建占位标签页
-    const ext = file.split('.').pop() || '';
-    const langMap: Record<string, string> = {
-      ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
-      css: 'css', json: 'json', html: 'html', md: 'markdown', yaml: 'yaml',
-      py: 'python', go: 'go', rs: 'rust', png: 'text', jpg: 'text',
-    };
-    openTab({
-      id: `file-${file}-${message.id}`,
-      title: file,
-      type: file.match(/\.(png|jpg|jpeg|gif|svg|webp)$/) ? 'image' : 'code',
-      content: `// ${file}\n// This file was referenced in the workflow but its content is not available yet.`,
-      language: langMap[ext] || 'typescript',
     });
   };
 

@@ -54,8 +54,11 @@ test-results/
 *.user
 *.code-workspace
 pnpm-lock.yaml
+!app/frontend/pnpm-lock.yaml
+!templates/react-vite-tailwind/pnpm-lock.yaml
 *.pyc
 __pycache__
+*.tsbuildinfo
 
 # 任务文档需要隐藏，不提交到仓库中
 docs/0-task.md

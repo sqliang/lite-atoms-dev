@@ -293,6 +293,13 @@ export default function FileTree({ onDownloadProject, isCollapsed, onToggleColla
               ))
             )}
           </div>
+        ) : projectFiles.length === 0 ? (
+          // 稳定版本尚未发布：文件树为空
+          <div className="px-3 py-6 text-center">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              首个稳定版本发布后，生成的项目文件将展示在这里。
+            </p>
+          </div>
         ) : (
           // 正常模式：渲染完整文件树
           projectFiles.map((node) => (

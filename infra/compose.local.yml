@@ -1,0 +1,113 @@
+services:
+  # Local product database: Supabase cloud Postgres added ~0.5s RTT per round trip
+  # on this network, which dominated every API call. Auth identity still comes from
+  # Supabase JWTs; only product state moves to this container.
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./local-db-init/00_shim.sql:/docker-entrypoint-initdb.d/00_shim.sql:ro
+      - ../supabase/migrations/20260719_0001_lite_atoms.sql:/docker-entrypoint-initdb.d/01_migration.sql:ro
+      - ./local-db-init/02_local.sql:/docker-entrypoint-initdb.d/02_local.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  build-runner:
+    build:
+      context: ..
+      dockerfile: infra/build-runner/Dockerfile
+    image: lite-atoms-build-runner:local
+    command: ["true"]
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: app/backend/Dockerfile
+    env_file: ../.env
+    environment:
+      # Product state goes to the local db service; .env's cloud URL stays for reference.
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      PROJECTS_ROOT: /var/lib/lite-atoms/projects
+      ARTIFACTS_ROOT: /var/lib/lite-atoms/artifacts
+      PROJECTS_VOLUME_NAME: infra_projects
+    ports: ["8000:8000"]
+    volumes:
+      - projects:/var/lib/lite-atoms/projects
+      - artifacts:/var/lib/lite-atoms/artifacts
+    # The named project volume is root-owned when Docker creates it. The API provisions
+    # per-project directories there; it has no Docker socket or model/tool capability.
+    user: "0:0"
+    command: ["/app/.venv/bin/uvicorn", "lite_atoms.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: app/backend/Dockerfile
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/postgres
+      PROJECTS_ROOT: /var/lib/lite-atoms/projects
+      ARTIFACTS_ROOT: /var/lib/lite-atoms/artifacts
+      PROJECTS_VOLUME_NAME: infra_projects
+    volumes:
+      - projects:/var/lib/lite-atoms/projects
+      - artifacts:/var/lib/lite-atoms/artifacts
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Worker is the only trusted service allowed to reach Docker. Agent code never gets
+    # this capability; it receives only constrained file tools inside the Worker process.
+    user: "0:0"
+    command: ["/app/.venv/bin/python", "-m", "lite_atoms.worker.main"]
+    depends_on:
+      api:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      build-runner:
+        condition: service_started
+
+  preview:
+    build:
+      context: ..
+      dockerfile: app/backend/Dockerfile
+    env_file: ../.env
+    environment:
+      ARTIFACTS_ROOT: /var/lib/lite-atoms/artifacts
+    ports: ["8081:8080"]
+    volumes:
+      - artifacts:/var/lib/lite-atoms/artifacts:ro
+    command: ["/app/.venv/bin/uvicorn", "lite_atoms.preview_gateway.main:app", "--host", "0.0.0.0", "--port", "8080"]
+
+  frontend:
+    build:
+      context: ../app/frontend
+      dockerfile: Dockerfile
+      args:
+        # The public browser client uses the same low-privilege Supabase values as
+        # the API's Auth verifier. Do not substitute the service-role secret here.
+        VITE_SUPABASE_URL: ${SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    # nginx-unprivileged intentionally listens on 8080 inside the container.
+    ports: ["3000:8080"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  projects:
+  artifacts:
+  db-data:

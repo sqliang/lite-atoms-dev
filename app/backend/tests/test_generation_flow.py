@@ -1,0 +1,98 @@
+"""Generation-flow unit tests: streaming callback, abort, write guidance, and naming."""
+
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import pytest
+
+from lite_atoms.agents.service import AgentAborted, _file_tools, generate_project_title
+from lite_atoms.worker.main import RunCancelled, _raise_if_cancel_requested
+
+CALLBACK_CALLS: list[tuple[str, str]] = []
+
+
+def _callback(path: str, content: str) -> None:
+    CALLBACK_CALLS.append((path, content))
+
+
+def _write_tool(worktree: Path, should_abort=None):
+    tools = {tool.name: tool for tool in _file_tools(worktree, on_file_written=_callback, should_abort=should_abort)}
+    return tools["write_source"]
+
+
+def test_write_source_streams_written_file(tmp_path: Path) -> None:
+    CALLBACK_CALLS.clear()
+    _write_tool(tmp_path).invoke({"path": "src/App.tsx", "content": "export default 1;"})
+    assert CALLBACK_CALLS == [("src/App.tsx", "export default 1;")]
+    assert (tmp_path / "src" / "App.tsx").read_text() == "export default 1;"
+
+
+def test_write_source_outside_allowlist_returns_guidance(tmp_path: Path) -> None:
+    """Allowlist violations must be recoverable feedback, never a Run-killing exception."""
+    CALLBACK_CALLS.clear()
+    result = _write_tool(tmp_path).invoke({"path": "package.json", "content": "{}"})
+    assert result.startswith("rejected:")
+    assert CALLBACK_CALLS == []
+    assert not (tmp_path / "package.json").exists()
+
+
+def test_write_source_allows_public_assets(tmp_path: Path) -> None:
+    CALLBACK_CALLS.clear()
+    result = _write_tool(tmp_path).invoke({"path": "public/logo.svg", "content": "<svg />"})
+    assert result == "wrote public/logo.svg"
+    assert (tmp_path / "public" / "logo.svg").exists()
+
+
+def test_write_source_oversize_returns_guidance(tmp_path: Path) -> None:
+    CALLBACK_CALLS.clear()
+    result = _write_tool(tmp_path).invoke({"path": "src/big.ts", "content": "x" * 200_001})
+    assert result.startswith("rejected:")
+    assert CALLBACK_CALLS == []
+
+
+def test_write_source_aborts_between_tool_calls(tmp_path: Path) -> None:
+    with pytest.raises(AgentAborted):
+        _write_tool(tmp_path, should_abort=lambda: True).invoke({"path": "src/App.tsx", "content": "x"})
+    assert not (tmp_path / "src" / "App.tsx").exists()
+
+
+def test_all_tools_abort_when_cancel_requested(tmp_path: Path) -> None:
+    """read/list/write must all unwind promptly once the owner cancels the Run."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "App.tsx").write_text("x")
+    tools = {tool.name: tool for tool in _file_tools(tmp_path, should_abort=lambda: True)}
+    with pytest.raises(AgentAborted):
+        tools["read_source"].invoke({"path": "src/App.tsx"})
+    with pytest.raises(AgentAborted):
+        tools["list_sources"].invoke({})
+
+
+def test_cancel_check_passes_without_request() -> None:
+    with patch("lite_atoms.worker.main.repository.cancel_requested", return_value=False):
+        _raise_if_cancel_requested("00000000-0000-0000-0000-000000000000")  # type: ignore[arg-type]
+
+
+def test_cancel_check_raises_after_request() -> None:
+    with (
+        patch("lite_atoms.worker.main.repository.cancel_requested", return_value=True),
+        pytest.raises(RunCancelled),
+    ):
+        _raise_if_cancel_requested("00000000-0000-0000-0000-000000000000")  # type: ignore[arg-type]
+
+
+def test_generate_project_title_uses_model_text() -> None:
+    response = SimpleNamespace(content='"Todo Manager"\n')
+    with patch("lite_atoms.agents.service._model") as model:
+        model.return_value.invoke.return_value = response
+        assert generate_project_title("帮我创建一个待办事项应用") == "Todo Manager"
+
+
+def test_generate_project_title_rejects_empty_output() -> None:
+    response = SimpleNamespace(content="  \n")
+    with (
+        patch("lite_atoms.agents.service._model") as model,
+        pytest.raises(ValueError, match="empty"),
+    ):
+        model.return_value.invoke.return_value = response
+        generate_project_title("帮我创建一个待办事项应用")
