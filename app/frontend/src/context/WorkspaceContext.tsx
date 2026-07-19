@@ -67,6 +67,18 @@ export interface FileNode {
 }
 
 /**
+ * 编辑器选区引用：用户在编辑器中选中一段代码后，作为发送指令时的附加上下文。
+ * @property path - 文件仓库相对路径（即标签页 id）
+ * @property startLine - 选中起始行（1-indexed）
+ * @property endLine - 选中结束行（1-indexed，含）
+ */
+export interface SelectionReference {
+  path: string;
+  startLine: number;
+  endLine: number;
+}
+
+/**
  * 工作区上下文类型定义
  * 提供标签页管理和文件操作的完整 API
  */
@@ -101,6 +113,10 @@ interface WorkspaceContextType {
   openFileFromTree: (file: FileNode) => void;
   /** 按文件名在文件树中搜索并打开（返回是否找到） */
   findAndOpenFileByName: (fileName: string) => Promise<boolean>;
+  /** 编辑器当前选中的代码引用（待随指令发送） */
+  selectionReference: SelectionReference | null;
+  /** 更新编辑器选区引用 */
+  setSelectionReference: (reference: SelectionReference | null) => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -127,6 +143,8 @@ export function WorkspaceProvider({ children, projectId, stableVersionId, select
   const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
   /** 当前激活标签页的 ID */
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  /** 编辑器中选中的代码引用，随下一条指令发送给后端 */
+  const [selectionReference, setSelectionReference] = useState<SelectionReference | null>(null);
 
   // 生成中的草稿文件更新时，同步刷新已打开的标签页内容，形成流式渲染效果。
   useEffect(() => {
@@ -276,7 +294,7 @@ export function WorkspaceProvider({ children, projectId, stableVersionId, select
   }, [projectFiles, openFileFromTree]);
 
   return (
-    <WorkspaceContext.Provider value={{ projectId, stableVersionId, selectedVersionId, activeRunStage, tabs, activeTabId, projectFiles, loadFileContent, openTab, closeTab, closeAllTabs, setActiveTab, updateTabContent, openFileFromTree, findAndOpenFileByName }}>
+    <WorkspaceContext.Provider value={{ projectId, stableVersionId, selectedVersionId, activeRunStage, tabs, activeTabId, projectFiles, loadFileContent, openTab, closeTab, closeAllTabs, setActiveTab, updateTabContent, openFileFromTree, findAndOpenFileByName, selectionReference, setSelectionReference }}>
       {children}
     </WorkspaceContext.Provider>
   );

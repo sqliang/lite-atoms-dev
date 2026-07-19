@@ -85,7 +85,8 @@ def create_preview_ticket(project_id: UUID, user_id: CurrentUserId) -> dict[str,
 @app.post("/v1/projects/{project_id}/runs", response_model=RunResponse, status_code=202)
 def start_run(project_id: UUID, payload: CreateRunRequest, user_id: CurrentUserId) -> RunResponse:
     try:
-        return run_response(repository.create_run(project_id, user_id, payload.kind, payload.request_id, payload.instruction))
+        references = [item.model_dump() for item in payload.references]
+        return run_response(repository.create_run(project_id, user_id, payload.kind, payload.request_id, payload.instruction, references))
     except PermissionError:
         raise HTTPException(404, "Project not found")
     except ValueError as error:

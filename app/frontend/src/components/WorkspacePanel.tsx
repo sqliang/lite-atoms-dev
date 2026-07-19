@@ -36,7 +36,7 @@ function fallbackCopyToClipboard(text: string): boolean {
 }
 
 export default function WorkspacePanel() {
-  const { tabs, activeTabId, closeTab, closeAllTabs, setActiveTab, projectFiles, loadFileContent } = useWorkspace();
+  const { tabs, activeTabId, closeTab, closeAllTabs, setActiveTab, projectFiles, loadFileContent, setSelectionReference } = useWorkspace();
   const [isTreeCollapsed, setIsTreeCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('code');
   const tabsContainerRef = useRef<HTMLDivElement>(null);
@@ -52,6 +52,32 @@ export default function WorkspacePanel() {
   };
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
+
+  /**
+   * 捕获编辑器中的代码选区，映射为 {文件, 行区间} 引用供对话输入框使用。
+   * 行号优先取逐行渲染的 data-line 标记；单块渲染时用文本匹配在原文中定位。
+   */
+  const handleEditorMouseUp = () => {
+    if (!activeTab || !activeTab.id.includes('/')) return;
+    const selection = window.getSelection();
+    const text = selection?.toString() ?? '';
+    if (!selection || selection.isCollapsed || !text.trim()) return;
+    const lineOf = (node: Node | null): number | null => {
+      const element = node instanceof Element ? node : node?.parentElement;
+      const lineElement = element?.closest('[data-line]');
+      return lineElement ? Number(lineElement.getAttribute('data-line')) : null;
+    };
+    let startLine = lineOf(selection.anchorNode);
+    let endLine = lineOf(selection.focusNode);
+    if (startLine == null || endLine == null) {
+      const offset = activeTab.content.indexOf(text);
+      if (offset < 0) return;
+      startLine = activeTab.content.slice(0, offset).split('\n').length;
+      endLine = startLine + text.split('\n').length - 1;
+    }
+    const [from, to] = startLine <= endLine ? [startLine, endLine] : [endLine, startLine];
+    setSelectionReference({ path: activeTab.id, startLine: from, endLine: to });
+  };
 
   const getTabIcon = (type: string) => {
     switch (type) {
@@ -123,24 +149,28 @@ export default function WorkspacePanel() {
   };
 
   return (
-    <PanelGroup direction="horizontal" className="h-full">
-      {/* File Tree Sidebar */}
-      <Panel
-        defaultSize={isTreeCollapsed ? 3 : 22}
-        minSize={isTreeCollapsed ? 3 : 15}
-        maxSize={isTreeCollapsed ? 4 : 35}
-      >
-        <FileTree
-          onDownloadProject={handleDownloadProject}
-          isCollapsed={isTreeCollapsed}
-          onToggleCollapse={() => setIsTreeCollapsed(!isTreeCollapsed)}
-        />
-      </Panel>
+    <PanelGroup direction="horizontal" className="h-full" key={viewMode}>
+      {/* File Tree Sidebar：仅 Code 模式展示，预览模式下隐藏让出宽度 */}
+      {viewMode === 'code' && (
+        <>
+          <Panel
+            defaultSize={isTreeCollapsed ? 3 : 22}
+            minSize={isTreeCollapsed ? 3 : 15}
+            maxSize={isTreeCollapsed ? 4 : 35}
+          >
+            <FileTree
+              onDownloadProject={handleDownloadProject}
+              isCollapsed={isTreeCollapsed}
+              onToggleCollapse={() => setIsTreeCollapsed(!isTreeCollapsed)}
+            />
+          </Panel>
 
-      <PanelResizeHandle className="w-px bg-border hover:bg-primary/30 transition-colors" />
+          <PanelResizeHandle className="w-px bg-border hover:bg-primary/30 transition-colors" />
+        </>
+      )}
 
       {/* Editor / Preview Area */}
-      <Panel defaultSize={78} minSize={50}>
+      <Panel defaultSize={viewMode === 'code' ? 78 : 100} minSize={50}>
         <div className="h-full flex flex-col bg-card">
           {/* Top toolbar with view mode toggle */}
           <div className="flex items-center h-9 border-b border-border bg-background flex-shrink-0">
@@ -287,7 +317,9 @@ export default function WorkspacePanel() {
                 ) : (
                   <>
                     {activeTab && activeTab.type === 'code' && (
-                      <CodeEditor content={activeTab.content} language={activeTab.language} />
+                      <div className="h-full" onMouseUp={handleEditorMouseUp}>
+                        <CodeEditor content={activeTab.content} language={activeTab.language} />
+                      </div>
                     )}
                     {activeTab && activeTab.type === 'image' && (
                       <ImageViewer content={activeTab.content} title={activeTab.title} />

@@ -19,10 +19,19 @@ class ProjectResponse(BaseModel):
     latest_run_status: str | None = None
 
 
+class ReferenceItem(BaseModel):
+    """A user-pinned code excerpt attached to a Run instruction."""
+
+    path: str = Field(max_length=500)
+    start_line: int | None = Field(default=None, ge=1)
+    end_line: int | None = Field(default=None, ge=1)
+
+
 class CreateRunRequest(BaseModel):
     kind: Literal["initial", "update", "retry", "restore"]
     request_id: UUID
     instruction: str | None = Field(default=None, max_length=4000)
+    references: list[ReferenceItem] = Field(default_factory=list, max_length=5)
 
 
 class ContractUpdateRequest(BaseModel):

@@ -96,8 +96,18 @@ def owned_project(connection: Connection, project_id: UUID, owner_id: str) -> di
     return row
 
 
-def create_run(project_id: UUID, owner_id: str, kind: str, request_id: UUID, instruction: str | None) -> dict[str, Any]:
+def create_run(
+    project_id: UUID,
+    owner_id: str,
+    kind: str,
+    request_id: UUID,
+    instruction: str | None,
+    references: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Create one idempotent Run. The partial index prevents concurrent writers."""
+    references = references or []
+    if any(".." in str(item.get("path", "")).split("/") for item in references):
+        raise ValueError("Reference paths may not escape the project")
     with transaction() as connection:
         project = owned_project(connection, project_id, owner_id)
         existing = connection.execute(
@@ -118,9 +128,19 @@ def create_run(project_id: UUID, owner_id: str, kind: str, request_id: UUID, ins
             (run_id, project_id, kind, request_id, contract["id"] if contract else None, project["stable_version_id"], "planning" if kind == "initial" else "generating"),
         )
         if instruction:
+            # References are part of the owner's instruction: the visible text carries a
+            # human-readable note, while the structured payload rides in `summary` so the
+            # Worker can rebuild precise excerpts without a schema migration.
+            note = ""
+            if references:
+                labels = [
+                    f"{item['path']}" + (f" (L{item['start_line']}-{item['end_line']})" if item.get("start_line") else "")
+                    for item in references
+                ]
+                note = "\n\n引用: " + ", ".join(labels)
             connection.execute(
-                "insert into app.messages (id, project_id, run_id, role, visible_content) values (%s,%s,%s,'user',%s)",
-                (uuid4(), project_id, run_id, instruction),
+                "insert into app.messages (id, project_id, run_id, role, visible_content, summary) values (%s,%s,%s,'user',%s,%s)",
+                (uuid4(), project_id, run_id, instruction + note, json.dumps(references) if references else None),
             )
         append_event(connection, run_id, "run.queued", {"stage": "planning" if kind == "initial" else "generating"})
         return connection.execute("select * from app.agent_runs where id=%s", (run_id,)).fetchone()
@@ -174,6 +194,23 @@ def get_run_instruction(run_id: UUID) -> str | None:
             (run_id,),
         ).fetchone()
         return row["visible_content"] if row else None
+
+
+def get_run_references(run_id: UUID) -> list[dict[str, Any]]:
+    """Return the structured code references attached to a Run's instruction, if any."""
+    with transaction() as connection:
+        row = connection.execute(
+            """select summary from app.messages
+               where run_id=%s and role='user' and summary is not null
+               order by created_at desc limit 1""",
+            (run_id,),
+        ).fetchone()
+    if not row:
+        return []
+    try:
+        return json.loads(row["summary"])
+    except (TypeError, json.JSONDecodeError):
+        return []
 
 
 def list_versions(project_id: UUID, owner_id: str) -> list[dict[str, Any]]:

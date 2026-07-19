@@ -179,8 +179,9 @@ def process_run(run: dict) -> None:
         # instead of waiting for the whole generation stage to finish.
         should_abort = lambda: repository.cancel_requested(run["id"])  # noqa: E731
         instruction = repository.get_run_instruction(run["id"]) if run["kind"] != "initial" else None
+        references = repository.get_run_references(run["id"]) if run["kind"] != "initial" else []
         _transition(run["id"], "generating", "builder.started")
-        summary = generate_source(worktree, contract, on_file_written=on_file_written, should_abort=should_abort, instruction=instruction)
+        summary = generate_source(worktree, contract, on_file_written=on_file_written, should_abort=should_abort, instruction=instruction, references=references)
         _transition(run["id"], "validating", "validation.started")
         validate_source_tree(worktree)
         _transition(run["id"], "typechecking", "build.started")

@@ -14,7 +14,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { GripVertical, LoaderCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { WorkspaceProvider } from '@/context/WorkspaceContext';
-import ChatPanel from '@/components/ChatPanel';
+import ChatPanel, { type RunReferenceInput } from '@/components/ChatPanel';
 import WorkspacePanel from '@/components/WorkspacePanel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, apiRequest } from '@/shared/api/client';
@@ -141,10 +141,10 @@ export function WorkspaceScreen({ projectId }: { projectId: string }) {
   });
 
   const startRun = useMutation({
-    mutationFn: (input: { kind: Run['kind']; instruction?: string }) =>
+    mutationFn: (input: { kind: Run['kind']; instruction?: string; references?: RunReferenceInput[] }) =>
       apiRequest<Run>(`/v1/projects/${projectId}/runs`, {
         method: 'POST',
-        body: JSON.stringify({ kind: input.kind, request_id: crypto.randomUUID(), instruction: input.instruction }),
+        body: JSON.stringify({ kind: input.kind, request_id: crypto.randomUUID(), instruction: input.instruction, references: input.references ?? [] }),
       }),
     onSuccess: () => {
       // The user message was persisted by create_run; refresh history and run state.
@@ -327,7 +327,7 @@ export function WorkspaceScreen({ projectId }: { projectId: string }) {
               selectedVersionId={selectedVersionId}
               onSelectVersion={handleSelectVersion}
               buildDiagnostics={currentRun?.status === 'failed' ? buildLog.data?.diagnostics ?? null : null}
-              onSend={(instruction) => startRun.mutate({ kind: 'update', instruction })}
+              onSend={(instruction, references) => startRun.mutate({ kind: 'update', instruction, references })}
               onRetry={retryFailedRun}
               onCancel={() => currentRun && cancelRun.mutate(currentRun.id)}
               isSending={startRun.isPending}
