@@ -6,7 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from lite_atoms.agents.service import AgentOutputError, plan_contract
+from lite_atoms.agents.planner import plan_contract
+from lite_atoms.agents.errors import AgentOutputError
 
 
 def _valid_contract() -> dict:
@@ -32,7 +33,7 @@ def _model_returning(payloads: list[str]):
 
 
 def _patch_model(payloads: list[str]):
-    return patch("lite_atoms.agents.service._model", return_value=_model_returning(payloads))
+    return patch("lite_atoms.agents.planner._model", return_value=_model_returning(payloads))
 
 
 def test_accepts_valid_contract_on_first_attempt() -> None:
@@ -71,5 +72,5 @@ def test_falls_back_when_provider_rejects_json_mode() -> None:
             return SimpleNamespace(content=json.dumps(_valid_contract()))
 
     shared = FlakyModel()
-    with patch("lite_atoms.agents.service._model", side_effect=lambda json_mode=False: shared):
+    with patch("lite_atoms.agents.planner._model", side_effect=lambda json_mode=False: shared):
         assert plan_contract("build a todo app")["title"] == "Todo app"

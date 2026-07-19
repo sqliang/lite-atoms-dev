@@ -8,13 +8,15 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID, uuid4
 
-from lite_atoms.agents.service import AgentAborted, generate_project_title, generate_source, plan_contract
+from lite_atoms.agents.builder import generate_source
+from lite_atoms.agents.errors import AgentAborted
+from lite_atoms.agents.planner import plan_contract
+from lite_atoms.agents.titles import generate_project_title
 from lite_atoms.application import repository
 from lite_atoms.execution.build_runner import run_build
 from lite_atoms.execution.validator import validate_source_tree
 from lite_atoms.execution.worktree import cleanup_worktree, create_worktree, promote_worktree
 from lite_atoms.infrastructure.db import transaction
-from lite_atoms.settings import settings
 
 
 logging.basicConfig(level=logging.INFO)
@@ -92,9 +94,9 @@ def _persist_plan(run: dict) -> None:
     # A cancel requested during the long Planner call must win over pausing for approval.
     _raise_if_cancel_requested(run["id"])
     created = repository.create_draft_contract(run["project_id"], str(project["owner_id"]), contract)
-    if settings.planner_auto_approve:
-        # Default flow: approve immediately and requeue the same initial Run for
-        # generation. The manual awaiting_approval path stays for the future Plan mode.
+    if run.get("mode", "build") == "build":
+        # Build mode: approve immediately and requeue the same initial Run for
+        # generation. Plan mode below pauses for user review and editing instead.
         repository.auto_approve_contract(run["project_id"], created["id"], run["id"], str(project["owner_id"]))
         return
     repository.update_run(run["id"], status="awaiting_approval", stage="planning")
